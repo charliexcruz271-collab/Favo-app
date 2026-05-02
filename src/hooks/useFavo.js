@@ -37,7 +37,10 @@ export function useAuth() {
   // Registro paso 1: enviar OTP al correo
   const enviarOTP = async (email) => {
     if (!email.endsWith('@gmail.com')) throw new Error('Solo correos Gmail (@gmail.com)');
-    const { error } = await supabase.auth.signInWithOtp({ email });
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: null, shouldCreateUser: true },
+    });
     if (error) throw error;
   };
 

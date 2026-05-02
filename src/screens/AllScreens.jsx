@@ -780,13 +780,13 @@ function RegCode({ email, onNext }) {
 
 // ─── REG VERIFY ───────────────────────────────────────────────────────────────
 function RegVerify({ email, onNext }) {
-  const [digits, setDigits] = useState(["","","","",""]);
+  const [digits, setDigits] = useState(["","","","","",""]);
   const refs = useRef([]);
   const filled = digits.every(d => d !== "");
   const hc = (i, v) => {
     if (!/^\d?$/.test(v)) return;
     const n = [...digits]; n[i] = v; setDigits(n);
-    if (v && i < 4) refs.current[i + 1]?.focus();
+    if (v && i < 5) refs.current[i + 1]?.focus();
   };
   const hk = (i, e) => { if (e.key === "Backspace" && !digits[i] && i > 0) refs.current[i - 1]?.focus(); };
   return (
@@ -802,7 +802,7 @@ function RegVerify({ email, onNext }) {
             onChange={e => hc(i, e.target.value)} onKeyDown={e => hk(i, e)}
             maxLength={1} type="tel"
             style={{
-              width:52, height:62, background:d ? "var(--acc-dim)" : "var(--surface)",
+              width:44, height:56, background:d ? "var(--acc-dim)" : "var(--surface)",
               border:`1.5px solid ${d ? "var(--accent)" : "var(--border2)"}`,
               borderRadius:"var(--r-md)", color:d ? "var(--accent)" : "var(--text)",
               fontSize:24, fontWeight:700, textAlign:"center", outline:"none",
@@ -811,7 +811,7 @@ function RegVerify({ email, onNext }) {
         ))}
       </div>
       <div style={{ fontSize:12, color:"var(--text3)", marginBottom:24, textAlign:"center" }}>
-        Demo: escribe cualquier 5 dígitos
+        Ingresa el código de 6 dígitos enviado a tu correo
       </div>
       <button className="btn btn-p mb2" disabled={!filled} onClick={() => onNext(digits.join(""))}>Continuar</button>
       <div style={{ fontSize:13, color:"var(--text2)", textAlign:"center" }}>
