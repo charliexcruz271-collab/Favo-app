@@ -1,0 +1,77 @@
+/* ============================================================
+   FAVO — Global Styles (Apple iOS Design Language)
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:      #F2F2F7;
+  --bg2:     #FFFFFF;
+  --bg3:     rgba(118,118,128,0.12);
+  --bg4:     rgba(118,118,128,0.08);
+  --text:    #1C1C1E;
+  --text2:   #48484A;
+  --muted:   #8E8E93;
+  --soft:    #AEAEB2;
+  --sep:     rgba(60,60,67,0.10);
+  --accent:  #FF6300;
+  --acc-bg:  rgba(255,99,0,0.09);
+  --blue:    #007AFF;
+  --green:   #34C759;
+  --teal:    #32ADE6;
+  --amber:   #FF9F0A;
+  --purple:  #BF5AF2;
+  --pink:    #FF375F;
+  --err:     #FF3B30;
+
+  --font: -apple-system, BlinkMacSystemFont, 'Inter', 'Helvetica Neue', sans-serif;
+
+  --r-xs:   8px;
+  --r-sm:   12px;
+  --r-md:   16px;
+  --r-lg:   20px;
+  --r-xl:   26px;
+  --r-pill: 100px;
+
+  --sh-sm: 0 2px 12px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.04);
+  --sh-md: 0 4px 20px rgba(0,0,0,0.08), 0 2px 8px rgba(0,0,0,0.05);
+  --sh-lg: 0 8px 32px rgba(0,0,0,0.10), 0 4px 12px rgba(0,0,0,0.06);
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  -webkit-font-smoothing: antialiased;
+}
+
+.phone-wrap {
+  min-height: 100vh;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 40px 16px 80px;
+  background: linear-gradient(160deg, #1A1A2E 0%, #16213E 55%, #0F3460 100%);
+}
+
+.phone {
+  width: 393px;
+  min-height: 852px;
+  background: var(--bg);
+  border-radius: 50px;
+  overflow: hidden;
+  position: relative;
+  box-shadow:
+    0 0 0 2px rgba(255,255,255,0.12),
+    0 0 0 4px rgba(0,0,0,0.85),
+    0 32px 80px rgba(0,0,0,0.70),
+    0 64px 120px rgba(0,0,0,0.40),
+    inset 0 1px 0 rgba(255,255,255,0.25);
+}
+
+@media (max-width: 430px) {
+  .phone-wrap { padding: 0; background: var(--bg); }
+  .phone { width: 100vw; min-height: 100vh; border-radius: 0; box-shadow: none; }
+}
