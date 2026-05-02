@@ -16,7 +16,7 @@ export function useAuth() {
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (session && !session.user.email?.endsWith('@uniandes.edu.co')) {
+      if (session && !session.user.email?.endsWith('@gmail.com')) {
         await supabase.auth.signOut();
         return;
       }
@@ -36,7 +36,7 @@ export function useAuth() {
 
   // Registro paso 1: enviar OTP al correo
   const enviarOTP = async (email) => {
-    if (!email.endsWith('@uniandes.edu.co')) throw new Error('Solo correos @uniandes.edu.co');
+    if (!email.endsWith('@gmail.com')) throw new Error('Solo correos Gmail (@gmail.com)');
     const { error } = await supabase.auth.signInWithOtp({ email });
     if (error) throw error;
   };
@@ -75,20 +75,9 @@ export function useAuth() {
     if (error) throw error;
   };
 
-  const signInWithGoogle = async () => {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: window.location.origin,
-        queryParams: { hd: 'uniandes.edu.co' },
-      },
-    });
-    if (error) throw error;
-  };
-
   const cerrarSesion = () => supabase.auth.signOut();
 
-  return { session, usuario, loading, signInWithGoogle, guardarPerfil, guardarHabilidades, cerrarSesion };
+  return { session, usuario, loading, enviarOTP, verificarOTP, guardarPerfil, guardarHabilidades, cerrarSesion };
 }
 
 // ── FAVORES ───────────────────────────────────────────────────────────────

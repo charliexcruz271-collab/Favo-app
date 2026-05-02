@@ -654,7 +654,7 @@ function BNav({ active, onChange }) {
 }
 
 // ─── SPLASH ───────────────────────────────────────────────────────────────────
-function Splash({ onGoogleAuth, authError }) {
+function Splash({ onNext }) {
   return (
     <div className="screen col" style={{
       minHeight:800, background:"var(--bg)", position:"relative", overflow:"hidden",
@@ -710,23 +710,12 @@ function Splash({ onGoogleAuth, authError }) {
       </div>
 
       <div style={{ padding:"0 32px 52px" }}>
-        <button className="btn btn-p" onClick={onGoogleAuth}
-          style={{ fontSize:15, fontWeight:600, letterSpacing:0.2, display:"flex", alignItems:"center", justifyContent:"center", gap:10 }}>
-          <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-            <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
-            <path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" fill="#34A853"/>
-            <path d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/>
-            <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
-          </svg>
-          Continuar con Google
+        <button className="btn btn-p" onClick={onNext}
+          style={{ fontSize:15, fontWeight:600, letterSpacing:0.2 }}>
+          Comenzar
         </button>
-        {authError && (
-          <div style={{ fontSize:13, color:"var(--err)", marginTop:10, textAlign:"center" }}>
-            {authError}
-          </div>
-        )}
         <div style={{ fontSize:12, color:"var(--text3)", marginTop:10, textAlign:"center", letterSpacing:0.2 }}>
-          Exclusivo para correos @uniandes.edu.co
+          Requiere cuenta Gmail (@gmail.com)
         </div>
       </div>
     </div>
@@ -736,20 +725,20 @@ function Splash({ onGoogleAuth, authError }) {
 // ─── REG EMAIL ────────────────────────────────────────────────────────────────
 function RegEmail({ onNext }) {
   const [email, setEmail] = useState("");
-  const valid = email.endsWith("@uniandes.edu.co") && email.length > 16;
+  const valid = email.endsWith("@gmail.com") && email.length > 10;
   return (
     <div className="screen px" style={{ paddingTop:28 }}>
       <div className="sdots mb3"><div className="sdot on"/><div className="sdot"/><div className="sdot"/><div className="sdot"/><div className="sdot"/></div>
-      <div className="t-display mb1">Correo<br /><span className="accent">universitario</span></div>
-      <div className="t-sub mb4" style={{ marginTop:8 }}>Solo cuentas @uniandes.edu.co</div>
+      <div className="t-display mb1">Correo<br /><span className="accent">Gmail</span></div>
+      <div className="t-sub mb4" style={{ marginTop:8 }}>Solo cuentas Gmail (@gmail.com)</div>
       <div className="iw">
-        <label className="lbl">Correo institucional</label>
-        <input className="inp" placeholder="nombre@uniandes.edu.co" value={email}
+        <label className="lbl">Correo Gmail</label>
+        <input className="inp" placeholder="nombre@gmail.com" value={email}
           onChange={e => setEmail(e.target.value)} type="email" autoCapitalize="none" />
       </div>
       {email.length > 5 && !valid && (
         <div style={{ background:"rgba(255,77,77,0.07)", border:"1px solid rgba(255,77,77,0.18)", borderRadius:"var(--r-sm)", padding:"11px 14px", marginBottom:14 }}>
-          <div style={{ fontSize:13, color:"var(--err)", fontWeight:500 }}>Solo correos @uniandes.edu.co</div>
+          <div style={{ fontSize:13, color:"var(--err)", fontWeight:500 }}>Solo correos Gmail (@gmail.com)</div>
         </div>
       )}
       {valid && (
@@ -824,7 +813,7 @@ function RegVerify({ email, onNext }) {
       <div style={{ fontSize:12, color:"var(--text3)", marginBottom:24, textAlign:"center" }}>
         Demo: escribe cualquier 5 dígitos
       </div>
-      <button className="btn btn-p mb2" disabled={!filled} onClick={onNext}>Continuar</button>
+      <button className="btn btn-p mb2" disabled={!filled} onClick={() => onNext(digits.join(""))}>Continuar</button>
       <div style={{ fontSize:13, color:"var(--text2)", textAlign:"center" }}>
         ¿No recibiste?{" "}
         <span style={{ color:"var(--accent)", fontWeight:600, cursor:"pointer" }}>Reenviar</span>
@@ -1858,9 +1847,10 @@ function Profile({ onBack, prov, onTogProv, ui }) {
 
 // ─── ROOT ─────────────────────────────────────────────────────────────────────
 export default function FavoApp() {
-  const { session, usuario, loading: authLoading, signInWithGoogle } = useAuth();
+  const { session, usuario, loading: authLoading, enviarOTP, verificarOTP } = useAuth();
   const [screen,  setScreen]  = useState("splash");
-  const [authError, setAuthError] = useState(null);
+  const [email,   setEmail]   = useState("");
+  const [codigo,  setCodigo]  = useState("");
   const [ui,      setUi]      = useState(null);
   const [selCat,  setCat]     = useState(null);
   const [selUser, setUser]    = useState(null);
@@ -1885,12 +1875,6 @@ export default function FavoApp() {
     }
   }, [session, usuario, authLoading]);
 
-  const handleGoogleAuth = async () => {
-    setAuthError(null);
-    try { await signInWithGoogle(); }
-    catch (e) { setAuthError(e.message); }
-  };
-
   const handleNav = id => {
     setNav(id);
     if (id === "home")    { setScreen("home");    setCat(null); setUser(null); }
@@ -1899,7 +1883,7 @@ export default function FavoApp() {
     if (id === "profile") setScreen("profile");
   };
 
-  const noNav = ["splash","reg-type","reg-hab","success"];
+  const noNav = ["splash","reg-email","reg-code","reg-verify","reg-type","reg-hab","success"];
   const showNav = !noNav.includes(screen);
 
   return (
@@ -1925,7 +1909,16 @@ export default function FavoApp() {
             />
           )}
 
-          {screen==="splash"    && <Splash onGoogleAuth={handleGoogleAuth} authError={authError} />}
+          {screen==="splash"    && <Splash onNext={() => setScreen("reg-email")} />}
+          {screen==="reg-email" && <RegEmail onNext={async (e) => {
+            try { await enviarOTP(e); setEmail(e); setScreen("reg-code"); }
+            catch (err) { toast_(err.message); }
+          }} />}
+          {screen==="reg-code"  && <RegCode email={email} onNext={(code) => { setCodigo(code); setScreen("reg-verify"); }} />}
+          {screen==="reg-verify"&& <RegVerify email={email} onNext={async (token) => {
+            try { await verificarOTP(email, token); }
+            catch (err) { toast_(err.message); }
+          }} />}
           {screen==="reg-type"  && <RegUserType onNext={info => {
             setUi(info);
             if (info.tipo === "prestador" || info.tipo === "ambos") setScreen("reg-hab");
