@@ -15,7 +15,11 @@ export function useAuth() {
       else setLoading(false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (session && !session.user.email?.endsWith('@uniandes.edu.co')) {
+        await supabase.auth.signOut();
+        return;
+      }
       setSession(session);
       if (session) fetchUsuario(session.user.id);
       else { setUsuario(null); setLoading(false); }
@@ -71,9 +75,20 @@ export function useAuth() {
     if (error) throw error;
   };
 
+  const signInWithGoogle = async () => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: window.location.origin,
+        queryParams: { hd: 'uniandes.edu.co' },
+      },
+    });
+    if (error) throw error;
+  };
+
   const cerrarSesion = () => supabase.auth.signOut();
 
-  return { session, usuario, loading, enviarOTP, verificarOTP, guardarPerfil, guardarHabilidades, cerrarSesion };
+  return { session, usuario, loading, signInWithGoogle, guardarPerfil, guardarHabilidades, cerrarSesion };
 }
 
 // ── FAVORES ───────────────────────────────────────────────────────────────
