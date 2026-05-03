@@ -1471,6 +1471,58 @@ function Negotiate({ cat, user, onConfirm, onBack, onChat, cp }) {
   );
 }
 
+// ─── CONTRAOFERTA MODAL (cliente) ─────────────────────────────────────────────
+function ContraofertaModal({ neg, onAceptar, onRechazar }) {
+  const ini = neg.prestador_nombre[0]?.toUpperCase() || "?";
+  return (
+    <div className="modal-bg">
+      <div style={{ fontSize:11, fontWeight:500, color:"var(--text3)", letterSpacing:0.8, textTransform:"uppercase", marginBottom:8 }}>
+        Contraoferta recibida
+      </div>
+      <div style={{ fontSize:24, fontWeight:700, letterSpacing:"-0.5px", textAlign:"center", marginBottom:20, lineHeight:1.2 }}>
+        Nueva<br /><span style={{ color:"var(--accent)" }}>contraoferta</span>
+      </div>
+      <div className="card" style={{ width:"100%", marginBottom:16 }}>
+        <div className="row g2 mb2">
+          <div className="av av-m">{ini}</div>
+          <div className="flex1">
+            <div style={{ fontSize:14, fontWeight:600, color:"var(--text)" }}>{neg.prestador_nombre}</div>
+            <div style={{ fontSize:12, color:"var(--text2)", marginTop:2 }}>{neg.prestador_carrera}</div>
+          </div>
+          <div style={{ fontSize:12, color:"var(--amber)", fontWeight:600 }}>★ {neg.prestador_rating}</div>
+        </div>
+        <div className="hr" style={{ margin:"10px 0" }} />
+        <div className="row between mb2">
+          <span style={{ fontSize:12, color:"var(--text3)" }}>Tu oferta original</span>
+          <span style={{ fontSize:13, fontWeight:500, color:"var(--text2)" }}>{fmt(neg.precio_oferta)}</span>
+        </div>
+        <div className="row between">
+          <span style={{ fontSize:12, color:"var(--text3)" }}>Propone</span>
+          <span style={{ fontSize:24, fontWeight:700, color:"var(--accent)", letterSpacing:"-1px" }}>{fmt(neg.monto)}</span>
+        </div>
+        {neg.monto > neg.precio_oferta && (
+          <div style={{ marginTop:10, fontSize:11, color:"var(--text3)", textAlign:"right" }}>
+            +{fmt(neg.monto - neg.precio_oferta)} sobre tu oferta
+          </div>
+        )}
+        {neg.monto <= neg.precio_oferta && (
+          <div style={{ marginTop:10, fontSize:11, color:"var(--green)", textAlign:"right" }}>
+            {fmt(neg.precio_oferta - neg.monto)} menos que tu oferta
+          </div>
+        )}
+      </div>
+      <div style={{ display:"flex", gap:10, width:"100%" }}>
+        <button className="btn btn-o flex1" style={{ padding:14, fontSize:13 }} onClick={onRechazar}>
+          Rechazar
+        </button>
+        <button className="btn btn-p flex1" style={{ padding:14, fontSize:13 }} onClick={onAceptar}>
+          Aceptar {fmt(neg.monto)}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── PUBLISH ──────────────────────────────────────────────────────────────────
 function Publish({ cat, fd, cf, onPublish, onBack }) {
   const mid = Math.floor((cat.range[0] + cat.range[1]) / 2);
@@ -2086,7 +2138,7 @@ function Profile({ onBack, prov, onTogProv, ui, favores }) {
 export default function FavoApp() {
   const { session, usuario, loading: authLoading, enviarOtp, verificarOtp, guardarPerfil, guardarHabilidades } = useAuth();
   const { crearFavor, aceptarFavor, hacerContraoferta, completarFavor, cargarFavores } = useFavores();
-  const { suscribirSolicitudes, notificarFavor, notificarTomado, suscribirEstado } = useRealtimeFavores();
+  const { suscribirSolicitudes, notificarFavor, notificarTomado, suscribirEstado, suscribirContraoferta, notificarResultado, suscribirResultados } = useRealtimeFavores();
   const { calificar } = useCalificaciones();
   const { actualizarUbicacion } = useUsuariosCercanos();
   const [screen,           setScreen]        = useState("loading");
@@ -2102,6 +2154,7 @@ export default function FavoApp() {
   const [fd,               setFd]            = useState("");
   const [cf,               setCf]            = useState("");
   const [solicitudEntrante,setSolicitud]     = useState(null);
+  const [contraofertaEntrante,setContraoferta] = useState(null);
   const [favorStatus,      setFavorStatus]   = useState(null);
   const [registrando,      setRegistrando]   = useState(false);
   const [favorActual,      setFavorActual]   = useState(null);
@@ -2151,6 +2204,26 @@ export default function FavoApp() {
       }
     });
   }, [favorActual?.id]);
+
+  // Cliente: subscribe a contraofertas cuando hay un favor activo pendiente
+  useEffect(() => {
+    if (!favorActual?.id) return;
+    return suscribirContraoferta(favorActual.id, neg => {
+      setContraoferta({ ...neg, precio_oferta: favorActual.precio_oferta || cprice });
+    });
+  }, [favorActual?.id]);
+
+  // Prestador: subscribe a resultados (aceptación/rechazo) de sus contraofertas
+  useEffect(() => {
+    const esPrest = usuario?.tipo === 'prestador' || usuario?.tipo === 'ambos';
+    if (!prov || !esPrest || !usuario?.id) return;
+    return suscribirResultados(usuario.id, ({ tipo, precio }) => {
+      if (tipo === 'aceptada')
+        toast_(`¡El cliente aceptó tu contraoferta! ${fmt(precio)}`);
+      else
+        toast_('El cliente rechazó tu contraoferta. El favor sigue disponible.');
+    });
+  }, [prov, usuario?.id]);
 
   // Geolocalización real: pedir permiso y seguir posición
   useEffect(() => {
@@ -2224,6 +2297,40 @@ export default function FavoApp() {
                 toast_(`Contraoferta de ${fmt(monto)} enviada`);
               }}
               onDecline={() => setSolicitud(null)}
+            />
+          )}
+          {contraofertaEntrante && (
+            <ContraofertaModal
+              neg={contraofertaEntrante}
+              onAceptar={async () => {
+                const neg = contraofertaEntrante;
+                try {
+                  await aceptarFavor(neg.favor_id, usuario.id, neg.prestador_id, neg.monto);
+                  notificarTomado(neg.favor_id).catch(() => {});
+                  notificarResultado(neg.favor_id, neg.prestador_id, 'aceptada', neg.monto).catch(() => {});
+                  setUser({
+                    id: neg.prestador_id,
+                    name: neg.prestador_nombre,
+                    career: neg.prestador_carrera,
+                    rating: neg.prestador_rating,
+                    favors: 0,
+                    av: neg.prestador_nombre[0]?.toUpperCase() || "?",
+                  });
+                  setFavorStatus('aceptado');
+                  setCprice(neg.monto);
+                  setContraoferta(null);
+                  toast_('¡Contraoferta aceptada! Prestador asignado.');
+                } catch (err) {
+                  setContraoferta(null);
+                  toast_(err.message);
+                }
+              }}
+              onRechazar={() => {
+                const neg = contraofertaEntrante;
+                notificarResultado(neg.favor_id, neg.prestador_id, 'rechazada', null).catch(() => {});
+                setContraoferta(null);
+                toast_('Contraoferta rechazada. El favor sigue disponible.');
+              }}
             />
           )}
 

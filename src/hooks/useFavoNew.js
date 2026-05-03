@@ -254,7 +254,62 @@ export function useRealtimeFavores() {
     return () => supabase.removeChannel(ch);
   };
 
-  return { suscribirSolicitudes, notificarFavor, notificarTomado, suscribirEstado };
+  // Cliente: escuchar nuevas contraofertas en la tabla negociaciones
+  const suscribirContraoferta = (favorId, callback) => {
+    const ch = supabase
+      .channel(`nego-${favorId}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'negociaciones',
+        filter: `favor_id=eq.${favorId}`,
+      }, async ({ new: neg }) => {
+        if (neg.tipo !== 'contraoferta') return;
+        const { data } = await supabase
+          .from('usuarios')
+          .select('nombre, carrera, rating_prom')
+          .eq('id', neg.usuario_id)
+          .single();
+        callback({
+          id: neg.id,
+          favor_id: neg.favor_id,
+          prestador_id: neg.usuario_id,
+          prestador_nombre: data?.nombre || 'Prestador',
+          prestador_carrera: data?.carrera || '',
+          prestador_rating: Number(data?.rating_prom ?? 5).toFixed(1),
+          monto: neg.monto,
+        });
+      })
+      .subscribe();
+    return () => supabase.removeChannel(ch);
+  };
+
+  // Notificar resultado de contraoferta al prestador vía broadcast
+  const notificarResultado = (favorId, prestadorId, tipo, precio) =>
+    new Promise(resolve => {
+      const ch = supabase.channel('favo-resultados');
+      ch.subscribe(status => {
+        if (status !== 'SUBSCRIBED') return;
+        ch.send({
+          type: 'broadcast',
+          event: 'resultado-contraoferta',
+          payload: { favor_id: favorId, prestador_id: prestadorId, tipo, precio: precio || null },
+        }).finally(() => { supabase.removeChannel(ch); resolve(); });
+      });
+    });
+
+  // Prestador: subscribe a resultados de sus contraofertas
+  const suscribirResultados = (miPrestadorId, callback) => {
+    const ch = supabase
+      .channel('favo-resultados')
+      .on('broadcast', { event: 'resultado-contraoferta' }, ({ payload }) => {
+        if (payload.prestador_id === miPrestadorId) callback(payload);
+      })
+      .subscribe();
+    return () => supabase.removeChannel(ch);
+  };
+
+  return { suscribirSolicitudes, notificarFavor, notificarTomado, suscribirEstado, suscribirContraoferta, notificarResultado, suscribirResultados };
 }
 
 // ── USUARIOS CERCANOS ─────────────────────────────────────────────────────

@@ -220,10 +220,10 @@ create policy "Insertar negociacion" on public.negociaciones
 
 create policy "Ver negociaciones" on public.negociaciones
   for select using (
-    exists (
+    auth.uid() = usuario_id
+    or exists (
       select 1 from public.favores
-      where id = favor_id
-        and (auth.uid() = cliente_id or auth.uid() = prestador_id)
+      where id = favor_id and auth.uid() = cliente_id
     )
   );
 
@@ -240,5 +240,6 @@ create policy "Insertar transaccion" on public.transacciones
     )
   );
 
--- Habilitar realtime para la tabla favores (necesario para postgres_changes)
+-- Habilitar realtime para postgres_changes
 alter publication supabase_realtime add table public.favores;
+alter publication supabase_realtime add table public.negociaciones;
