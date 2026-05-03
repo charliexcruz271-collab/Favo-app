@@ -715,7 +715,7 @@ function Splash({ onNext }) {
           Comenzar
         </button>
         <div style={{ fontSize:12, color:"var(--text3)", marginTop:10, textAlign:"center", letterSpacing:0.2 }}>
-          Requiere cuenta Gmail (@gmail.com)
+          Exclusivo para correos @uniandes.edu.co
         </div>
       </div>
     </div>
@@ -725,20 +725,20 @@ function Splash({ onNext }) {
 // ─── REG EMAIL ────────────────────────────────────────────────────────────────
 function RegEmail({ onNext }) {
   const [email, setEmail] = useState("");
-  const valid = email.endsWith("@gmail.com") && email.length > 10;
+  const valid = email.endsWith("@uniandes.edu.co") && email.length > 16;
   return (
     <div className="screen px" style={{ paddingTop:28 }}>
       <div className="sdots mb3"><div className="sdot on"/><div className="sdot"/><div className="sdot"/><div className="sdot"/><div className="sdot"/></div>
-      <div className="t-display mb1">Correo<br /><span className="accent">Gmail</span></div>
-      <div className="t-sub mb4" style={{ marginTop:8 }}>Solo cuentas Gmail (@gmail.com)</div>
+      <div className="t-display mb1">Correo<br /><span className="accent">universitario</span></div>
+      <div className="t-sub mb4" style={{ marginTop:8 }}>Solo cuentas @uniandes.edu.co</div>
       <div className="iw">
-        <label className="lbl">Correo Gmail</label>
-        <input className="inp" placeholder="nombre@gmail.com" value={email}
+        <label className="lbl">Correo institucional</label>
+        <input className="inp" placeholder="nombre@uniandes.edu.co" value={email}
           onChange={e => setEmail(e.target.value)} type="email" autoCapitalize="none" />
       </div>
       {email.length > 5 && !valid && (
         <div style={{ background:"rgba(255,77,77,0.07)", border:"1px solid rgba(255,77,77,0.18)", borderRadius:"var(--r-sm)", padding:"11px 14px", marginBottom:14 }}>
-          <div style={{ fontSize:13, color:"var(--err)", fontWeight:500 }}>Solo correos Gmail (@gmail.com)</div>
+          <div style={{ fontSize:13, color:"var(--err)", fontWeight:500 }}>Solo correos @uniandes.edu.co</div>
         </div>
       )}
       {valid && (
@@ -1847,10 +1847,9 @@ function Profile({ onBack, prov, onTogProv, ui }) {
 
 // ─── ROOT ─────────────────────────────────────────────────────────────────────
 export default function FavoApp() {
-  const { session, usuario, loading: authLoading, enviarOTP, verificarOTP } = useAuth();
+  const { session, usuario, loading: authLoading, registrarEmail } = useAuth();
   const [screen,  setScreen]  = useState("splash");
   const [email,   setEmail]   = useState("");
-  const [codigo,  setCodigo]  = useState("");
   const [ui,      setUi]      = useState(null);
   const [selCat,  setCat]     = useState(null);
   const [selUser, setUser]    = useState(null);
@@ -1883,7 +1882,7 @@ export default function FavoApp() {
     if (id === "profile") setScreen("profile");
   };
 
-  const noNav = ["splash","reg-email","reg-code","reg-verify","reg-type","reg-hab","success"];
+  const noNav = ["splash","reg-email","reg-type","reg-hab","success"];
   const showNav = !noNav.includes(screen);
 
   return (
@@ -1911,12 +1910,7 @@ export default function FavoApp() {
 
           {screen==="splash"    && <Splash onNext={() => setScreen("reg-email")} />}
           {screen==="reg-email" && <RegEmail onNext={async (e) => {
-            try { await enviarOTP(e); setEmail(e); setScreen("reg-code"); }
-            catch (err) { toast_(err.message); }
-          }} />}
-          {screen==="reg-code"  && <RegCode email={email} onNext={(code) => { setCodigo(code); setScreen("reg-verify"); }} />}
-          {screen==="reg-verify"&& <RegVerify email={email} onNext={async (token) => {
-            try { await verificarOTP(email, token); }
+            try { await registrarEmail(e); }
             catch (err) { toast_(err.message); }
           }} />}
           {screen==="reg-type"  && <RegUserType onNext={info => {

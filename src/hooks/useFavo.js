@@ -16,7 +16,7 @@ export function useAuth() {
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (session && !session.user.email?.endsWith('@gmail.com')) {
+      if (session && !session.user.email?.endsWith('@uniandes.edu.co')) {
         await supabase.auth.signOut();
         return;
       }
@@ -34,20 +34,15 @@ export function useAuth() {
     setLoading(false);
   };
 
-  // Registro paso 1: enviar OTP al correo
-  const enviarOTP = async (email) => {
-    if (!email.endsWith('@gmail.com')) throw new Error('Solo correos Gmail (@gmail.com)');
-    const { error } = await supabase.auth.signInWithOtp({
+  const registrarEmail = async (email) => {
+    if (!email.endsWith('@uniandes.edu.co')) throw new Error('Solo correos @uniandes.edu.co');
+    const { data, error } = await supabase.auth.signUp({
       email,
-      options: { emailRedirectTo: null, shouldCreateUser: true },
+      password: crypto.randomUUID(),
+      options: { emailRedirectTo: null },
     });
     if (error) throw error;
-  };
-
-  // Registro paso 2: verificar OTP
-  const verificarOTP = async (email, token) => {
-    const { error } = await supabase.auth.verifyOtp({ email, token, type: 'email' });
-    if (error) throw error;
+    if (!data.user) throw new Error('Ya existe una cuenta con este correo');
   };
 
   // Registro paso 3: guardar perfil
@@ -80,7 +75,7 @@ export function useAuth() {
 
   const cerrarSesion = () => supabase.auth.signOut();
 
-  return { session, usuario, loading, enviarOTP, verificarOTP, guardarPerfil, guardarHabilidades, cerrarSesion };
+  return { session, usuario, loading, registrarEmail, guardarPerfil, guardarHabilidades, cerrarSesion };
 }
 
 // ── FAVORES ───────────────────────────────────────────────────────────────
