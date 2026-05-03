@@ -2007,7 +2007,7 @@ export default function FavoApp() {
   const { suscribirNuevos, notificarFavor, suscribirEstado } = useRealtimeFavores();
   const { calificar } = useCalificaciones();
   const { actualizarUbicacion } = useUsuariosCercanos();
-  const [screen,           setScreen]        = useState("splash");
+  const [screen,           setScreen]        = useState("loading");
   const [email,            setEmail]         = useState("");
   const [ui,               setUi]            = useState(null);
   const [selCat,           setCat]           = useState(null);
@@ -2088,7 +2088,7 @@ export default function FavoApp() {
     if (id === "profile") setScreen("profile");
   };
 
-  const noNav = ["splash","reg-email","reg-verify","reg-type","reg-hab","success"];
+  const noNav = ["loading","splash","reg-email","reg-verify","reg-type","reg-hab","success"];
   const showNav = !noNav.includes(screen);
 
   return (
@@ -2126,6 +2126,11 @@ export default function FavoApp() {
             />
           )}
 
+          {screen==="loading"   && (
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"center", minHeight:800, background:"var(--bg)" }}>
+              <img src="/logo.png" alt="Favo" style={{ width:72, opacity:0.6 }} />
+            </div>
+          )}
           {screen==="splash"    && <Splash onNext={() => setScreen("reg-email")} />}
           {screen==="reg-email" && <RegEmail onNext={(e) => {
             setEmail(e);
