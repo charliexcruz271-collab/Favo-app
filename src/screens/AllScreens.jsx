@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { useAuth, useFavores, useRealtimeFavores, useChat, useCalificaciones, useUsuariosCercanos } from "../hooks/useFavo";
+import { useAuth, useFavores, useRealtimeFavores, useChat, useCalificaciones, useUsuariosCercanos } from "../hooks/useFavoNew";
 import { supabase } from "../lib/supabase";
 
 // ─── GLOBAL STYLES ────────────────────────────────────────────────────────────
@@ -1267,7 +1267,7 @@ function FavorDesc({ cat, onNext, onBack }) {
             {cf && <div className="tag tag-s mt2">{cf}</div>}
           </div>
         )}
-        <button className="btn btn-p" disabled={!ok} onClick={() => onNext(desc, cf)}>Ver prestadores</button>
+        <button className="btn btn-p" disabled={!ok} onClick={() => onNext(desc, cf)}>Continuar</button>
       </div>
     </div>
   );
@@ -1471,6 +1471,88 @@ function Negotiate({ cat, user, onConfirm, onBack, onChat, cp }) {
   );
 }
 
+// ─── PUBLISH ──────────────────────────────────────────────────────────────────
+function Publish({ cat, fd, cf, onPublish, onBack }) {
+  const mid = Math.floor((cat.range[0] + cat.range[1]) / 2);
+  const [price, setPrice] = useState(mid);
+  const [st, setSt]   = useState("14:00");
+  const [ld, setLd]   = useState(new Date().toISOString().split("T")[0]);
+  const [lt, setLt]   = useState("18:00");
+  const [pub, setPub] = useState(false);
+  const pct = ((price - cat.range[0]) / (cat.range[1] - cat.range[0]) * 100).toFixed(1) + "%";
+
+  return (
+    <div className="screen">
+      <div style={{ padding:"12px 20px 14px", borderBottom:"1px solid var(--border)" }}>
+        <div className="row g2">
+          <button className="back" onClick={onBack}><IcoBack size={18} color="var(--text2)" /></button>
+          <div>
+            <div style={{ fontSize:16, fontWeight:600, color:"var(--text)" }}>Publicar favor</div>
+            <div style={{ fontSize:12, color:"var(--text2)" }}>Define precio y horario</div>
+          </div>
+        </div>
+      </div>
+      <div className="px" style={{ paddingTop:16 }}>
+        <div className="card mb3" style={{ borderColor:"rgba(59,130,246,0.14)" }}>
+          <div className="row g2 mb2">
+            <div style={{ width:36, height:36, borderRadius:"var(--r-sm)", background:cat.bg, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+              <span style={{ color:cat.color }}>{cat.icon}</span>
+            </div>
+            <div>
+              <div style={{ fontSize:14, fontWeight:600, color:"var(--text)" }}>{cat.name}</div>
+              {cf && <div className="tag tag-s" style={{ marginTop:4 }}>{cf}</div>}
+            </div>
+          </div>
+          <div style={{ fontSize:13, color:"var(--text2)", lineHeight:1.6 }}>{fd.length>120?fd.slice(0,120)+"…":fd}</div>
+        </div>
+
+        <div style={{ textAlign:"center", marginBottom:20 }}>
+          <div style={{ fontSize:46, fontWeight:700, color:"var(--accent)", letterSpacing:"-2px", lineHeight:1 }}>{fmt(price)}</div>
+          <div style={{ fontSize:12, color:"var(--text3)", marginTop:4 }}>Tu oferta al prestador</div>
+        </div>
+        <div className="mb3">
+          <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, color:"var(--text3)", marginBottom:12, fontWeight:500 }}>
+            <span>{fmt(cat.range[0])}</span><span>{fmt(cat.range[1])}</span>
+          </div>
+          <input type="range" className="sldr" min={cat.range[0]} max={cat.range[1]} step={1000}
+            value={price} style={{ "--p":pct }} onChange={e => setPrice(Number(e.target.value))} />
+        </div>
+
+        <div className="t-label mb2">Horario</div>
+        <div className="iw">
+          <label className="lbl">Hora de inicio</label>
+          <input className="inp" type="time" value={st} onChange={e => setSt(e.target.value)} style={{ colorScheme:"dark" }} />
+        </div>
+        <div className="row g2 mb3">
+          <div className="iw flex1" style={{ marginBottom:0 }}>
+            <label className="lbl">Fecha límite</label>
+            <input className="inp" type="date" value={ld} onChange={e => setLd(e.target.value)} style={{ colorScheme:"dark" }} />
+          </div>
+          <div className="iw flex1" style={{ marginBottom:0 }}>
+            <label className="lbl">Hora límite</label>
+            <input className="inp" type="time" value={lt} onChange={e => setLt(e.target.value)} style={{ colorScheme:"dark" }} />
+          </div>
+        </div>
+
+        <div className="card mb3" style={{ background:"rgba(196,160,80,0.04)", borderColor:"rgba(196,160,80,0.15)" }}>
+          <div style={{ fontSize:12, color:"var(--text2)", lineHeight:1.7 }}>
+            Tu solicitud llegará en tiempo real a todos los prestadores disponibles.
+            <span style={{ color:"var(--accent)", fontWeight:600 }}> El primero en aceptar se asigna.</span>
+          </div>
+        </div>
+
+        <button className="btn btn-p" disabled={pub} onClick={async () => {
+          setPub(true);
+          await onPublish(price, { horaInicio: st, fechaLimite: ld, horaLimite: lt });
+          setPub(false);
+        }}>
+          {pub ? "Publicando…" : "Publicar favor"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── CHAT ─────────────────────────────────────────────────────────────────────
 function Chat({ user, favorId, userId, onBack }) {
   const { mensajes, enviarMensaje } = useChat(favorId);
@@ -1529,7 +1611,7 @@ function Chat({ user, favorId, userId, onBack }) {
 
 // ─── TRACKING ─────────────────────────────────────────────────────────────────
 function Tracking({ user, onBack, estado }) {
-  const aceptado = estado === 'aceptado' || estado === 'en_curso';
+  const aceptado = (estado === 'aceptado' || estado === 'en_curso') && !!user;
   return (
     <div className="screen px" style={{ paddingTop:16 }}>
       <div className="row g2 mb3">
@@ -1574,7 +1656,7 @@ function Tracking({ user, onBack, estado }) {
             display:"flex", gap:8, alignItems:"center",
           }}>
             <span style={{ width:7, height:7, borderRadius:"50%", background:"var(--accent)", display:"inline-block" }} />
-            <span style={{ fontSize:12, fontWeight:600, color:"var(--text)" }}>{user.name}</span>
+            <span style={{ fontSize:12, fontWeight:600, color:"var(--text)" }}>{user?.name || "Prestador"}</span>
             <span style={{ fontSize:12, color:"var(--text2)" }}>50m</span>
           </div>
           <div style={{
@@ -1589,10 +1671,10 @@ function Tracking({ user, onBack, estado }) {
 
       <div className="card mb3">
         <div className="row g2 mb3">
-          <div className="av av-m">{user.av}</div>
+          <div className="av av-m">{user?.av || "?"}</div>
           <div className="flex1">
-            <div style={{ fontSize:14, fontWeight:600, color:"var(--text)" }}>{user.name}</div>
-            <div style={{ fontSize:12, color:"var(--text2)" }}>{user.career}</div>
+            <div style={{ fontSize:14, fontWeight:600, color:"var(--text)" }}>{user?.name || "Esperando prestador…"}</div>
+            <div style={{ fontSize:12, color:"var(--text2)" }}>{user?.career || ""}</div>
           </div>
           {aceptado
             ? <div className="tag tag-g">~3 min</div>
@@ -2004,7 +2086,7 @@ function Profile({ onBack, prov, onTogProv, ui, favores }) {
 export default function FavoApp() {
   const { session, usuario, loading: authLoading, enviarOtp, verificarOtp, guardarPerfil, guardarHabilidades } = useAuth();
   const { crearFavor, aceptarFavor, hacerContraoferta, completarFavor, cargarFavores } = useFavores();
-  const { suscribirNuevos, notificarFavor, suscribirEstado } = useRealtimeFavores();
+  const { suscribirSolicitudes, notificarFavor, notificarTomado, suscribirEstado } = useRealtimeFavores();
   const { calificar } = useCalificaciones();
   const { actualizarUbicacion } = useUsuariosCercanos();
   const [screen,           setScreen]        = useState("loading");
@@ -2035,20 +2117,38 @@ export default function FavoApp() {
 
   const toast_ = msg => { setToast(msg); setTimeout(() => setToast(null), 2800); };
 
-  // Prestador: subscribe a solicitudes broadcast cuando modo prestador está activo
+  // Prestador: subscribe a nuevas solicitudes + notificación cuando otra es tomada
   useEffect(() => {
     const esPrest = usuario?.tipo === 'prestador' || usuario?.tipo === 'ambos';
     if (!prov || !esPrest) return;
-    return suscribirNuevos(favor => setSolicitud(favor));
+    return suscribirSolicitudes(
+      favor => setSolicitud(favor),
+      favorId => setSolicitud(prev => (prev?.id === favorId ? null : prev)),
+      usuario?.carrera
+    );
   }, [prov, usuario?.id]);
 
   // Cliente: subscribe a cambios de estado del favor activo via postgres_changes
   useEffect(() => {
     if (!favorActual?.id) return;
     setFavorStatus(favorActual.estado || 'pendiente');
-    return suscribirEstado(favorActual.id, fav => {
+    return suscribirEstado(favorActual.id, async fav => {
       setFavorStatus(fav.estado);
-      if (fav.estado === 'aceptado') toast_('¡Tu prestador aceptó el favor!');
+      if (fav.estado === 'aceptado' && fav.prestador_id) {
+        toast_('¡Un prestador aceptó tu favor!');
+        const { data } = await supabase.from('usuarios')
+          .select('id, nombre, carrera, rating_prom, total_favores')
+          .eq('id', fav.prestador_id)
+          .single();
+        if (data) setUser({
+          id: data.id,
+          name: data.nombre,
+          career: data.carrera,
+          rating: Number(data.rating_prom ?? 5).toFixed(1),
+          favors: data.total_favores ?? 0,
+          av: data.nombre?.[0]?.toUpperCase() ?? "?",
+        });
+      }
     });
   }, [favorActual?.id]);
 
@@ -2110,6 +2210,7 @@ export default function FavoApp() {
                 if (favorId !== 'demo') {
                   try { await aceptarFavor(favorId, clienteId, usuario.id, precio); }
                   catch (err) { toast_(err.message); return; }
+                  notificarTomado(favorId).catch(() => {});
                 }
                 setSolicitud(null);
                 toast_('¡Favor aceptado!');
@@ -2173,8 +2274,41 @@ export default function FavoApp() {
             ui={ui} favores={favores}
           />}
           {screen==="favor-desc" && selCat && <FavorDesc cat={selCat}
-            onNext={(d,c) => { setFd(d); setCf(c); setScreen("category"); }}
+            onNext={(d,c) => { setFd(d); setCf(c); setScreen("publish"); }}
             onBack={() => setScreen("home")} />}
+          {screen==="publish" && selCat && <Publish cat={selCat} fd={fd} cf={cf}
+            onBack={() => setScreen("favor-desc")}
+            onPublish={async (price, tiemposLocal) => {
+              try {
+                const favor = await crearFavor({
+                  categoriaId:   selCat.id,
+                  descripcion:   fd,
+                  carreraFiltro: cf || null,
+                  precioOferta:  price,
+                  horaInicio:    tiemposLocal.horaInicio,
+                  fechaLimite:   tiemposLocal.fechaLimite,
+                  horaLimite:    tiemposLocal.horaLimite,
+                });
+                setFavorActual(favor); setCprice(price); setScreen("tracking");
+                notificarFavor({
+                  id: favor.id,
+                  cliente_id: usuario?.id,
+                  descripcion: fd,
+                  precio_oferta: price,
+                  carrera_filtro: cf || null,
+                  hora_inicio:   tiemposLocal.horaInicio,
+                  fecha_limite:  tiemposLocal.fechaLimite,
+                  hora_limite:   tiemposLocal.horaLimite,
+                  categoria_id:    selCat.id,
+                  categoria_nombre: selCat.name,
+                  cliente: {
+                    nombre:      ui?.nombre     || 'Cliente',
+                    carrera:     ui?.carrera    || '',
+                    rating_prom: ui?.rating_prom || 5,
+                  },
+                }).catch(() => {});
+              } catch (err) { toast_(err.message); }
+            }} />}
           {screen==="category"   && selCat && <Category cat={selCat}
             onUser={(u, t) => { setUser(u); setTiempos(t); setScreen("negotiate"); }}
             onBack={() => setScreen("favor-desc")} fd={fd} cf={cf} userCoords={userCoords} />}
@@ -2211,7 +2345,7 @@ export default function FavoApp() {
             }}
             onBack={() => setScreen("category")} onChat={() => setScreen("chat")} cp={counter} />}
           {screen==="chat"       && selUser && <Chat user={selUser} favorId={favorActual?.id} userId={usuario?.id} onBack={() => setScreen("negotiate")} />}
-          {screen==="tracking"   && selUser && <Tracking user={selUser} estado={favorStatus}
+          {screen==="tracking"   && <Tracking user={selUser} estado={favorStatus}
             onBack={async () => {
               if (favorActual?.id) {
                 try { await completarFavor(favorActual.id); } catch (e) {}
