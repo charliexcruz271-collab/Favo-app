@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useAuth, useFavores } from "../hooks/useFavo";
+import { supabase } from "../lib/supabase";
 
 // ─── GLOBAL STYLES ────────────────────────────────────────────────────────────
 const G = `
@@ -1264,8 +1265,38 @@ function Category({ cat, onUser, onBack, fd, cf }) {
   const [st, setSt] = useState("14:00");
   const [ld, setLd] = useState(new Date().toISOString().split("T")[0]);
   const [lt, setLt] = useState("18:00");
-  const disp = cf ? USERS.filter(u => u.career.toLowerCase().includes(cf.split(" ")[0].toLowerCase())) : USERS;
-  const show = disp.length > 0 ? disp : USERS;
+  const [prestadores, setPrestadores] = useState([]);
+  const [cargando, setCargando] = useState(true);
+
+  useEffect(() => {
+    let activo = true;
+    setCargando(true);
+    supabase
+      .from("usuarios")
+      .select("id, nombre, carrera, rating_prom, total_favores")
+      .in("tipo", ["prestador", "ambos"])
+      .then(({ data }) => {
+        if (!activo) return;
+        const todos = (data || []).map(u => ({
+          id: u.id,
+          name: u.nombre,
+          career: u.carrera,
+          rating: Number(u.rating_prom ?? 5).toFixed(1),
+          favors: u.total_favores ?? 0,
+          distance: "Cerca",
+          available: true,
+          av: u.nombre?.[0]?.toUpperCase() ?? "?",
+        }));
+        const filtrados = cf
+          ? todos.filter(u => u.career.toLowerCase().includes(cf.split(" ")[0].toLowerCase()))
+          : todos;
+        setPrestadores(filtrados.length > 0 ? filtrados : todos);
+        setCargando(false);
+      });
+    return () => { activo = false; };
+  }, [cf]);
+
+  const show = prestadores;
 
   return (
     <div className="screen">
@@ -1309,7 +1340,7 @@ function Category({ cat, onUser, onBack, fd, cf }) {
         <div className="px">
           <div className="t-label mb2">Objetos disponibles</div>
           {OBJECTS.map(o => (
-            <div key={o.id} className="obj-card" onClick={() => onUser(USERS[0], { horaInicio: st, fechaLimite: ld, horaLimite: lt })}>
+            <div key={o.id} className="obj-card" onClick={() => show[0] && onUser(show[0], { horaInicio: st, fechaLimite: ld, horaLimite: lt })}>
               <div className="obj-img"><IcoBox size={20} color="var(--text3)" /></div>
               <div className="flex1">
                 <div style={{ fontSize:14, fontWeight:600, color:"var(--text)", marginBottom:3 }}>{o.name}</div>
@@ -1328,7 +1359,11 @@ function Category({ cat, onUser, onBack, fd, cf }) {
             <div className="t-label">Cerca de ti</div>
             <div className="tag tag-g">En vivo</div>
           </div>
-          {show.map(u => (
+          {cargando ? (
+            <div style={{ textAlign:"center", padding:"32px 0", color:"var(--text3)", fontSize:13 }}>Buscando prestadores…</div>
+          ) : show.length === 0 ? (
+            <div style={{ textAlign:"center", padding:"32px 0", color:"var(--text3)", fontSize:13 }}>No hay prestadores disponibles aún</div>
+          ) : show.map(u => (
             <div key={u.id} className={`ucard ${!u.available ? "busy" : ""}`}
               onClick={() => u.available && onUser(u, { horaInicio: st, fechaLimite: ld, horaLimite: lt })}>
               <div className="av av-m">{u.av}</div>
