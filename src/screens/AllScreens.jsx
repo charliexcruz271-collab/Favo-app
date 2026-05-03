@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { useAuth, useFavores, useRealtimeFavores } from "../hooks/useFavo";
+import { useAuth, useFavores, useRealtimeFavores, useChat, useCalificaciones, useUsuariosCercanos } from "../hooks/useFavo";
 import { supabase } from "../lib/supabase";
 
 // ─── GLOBAL STYLES ────────────────────────────────────────────────────────────
@@ -605,6 +605,8 @@ const INCOMING = {
 };
 
 const fmt = n => `$${Number(n).toLocaleString("es-CO")}`;
+const haversine = (la1, lo1, la2, lo2) => { const R=6371000,dLa=(la2-la1)*Math.PI/180,dLo=(lo2-lo1)*Math.PI/180,a=Math.sin(dLa/2)**2+Math.cos(la1*Math.PI/180)*Math.cos(la2*Math.PI/180)*Math.sin(dLo/2)**2; return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a)); };
+const fmtDist = m => m < 1000 ? `${Math.round(m)}m` : `${(m/1000).toFixed(1)}km`;
 
 // ─── STATUS BAR ───────────────────────────────────────────────────────────────
 function SB() {
@@ -627,26 +629,25 @@ function SB() {
 }
 
 // ─── BOTTOM NAV ───────────────────────────────────────────────────────────────
-function BNav({ active, onChange }) {
+function BNav({ active, onChange, badge }) {
   const tabs = [
     { id:"home",    Icon:IcoHome,   lbl:"Inicio"   },
     { id:"explore", Icon:IcoSearch, lbl:"Explorar" },
     { id:"wallet",  Icon:IcoWallet, lbl:"Pagos"    },
-    { id:"notifs",  Icon:IcoBell,   lbl:"Alertas"  },
+    { id:"notifs",  Icon:IcoBell,   lbl:"Alertas",  dot:badge },
     { id:"profile", Icon:IcoUser,   lbl:"Perfil"   },
   ];
   return (
     <div className="bnav">
-      {tabs.map(({ id, Icon, lbl }) => {
+      {tabs.map(({ id, Icon, lbl, dot }) => {
         const on = active === id;
         return (
           <div key={id} className="ni" onClick={() => onChange(id)}>
-            <div className="ni-icon">
+            <div className="ni-icon" style={{ position:"relative" }}>
               <Icon size={22} color={on ? "var(--accent)" : "var(--text3)"} />
+              {dot && <div style={{ position:"absolute", top:-2, right:-2, width:8, height:8, borderRadius:"50%", background:"#FF4D4D", border:"1.5px solid var(--bg)" }} />}
             </div>
-            <span className="ni-lbl" style={{ color: on ? "var(--accent)" : "var(--text3)" }}>
-              {lbl}
-            </span>
+            <span className="ni-lbl" style={{ color: on ? "var(--accent)" : "var(--text3)" }}>{lbl}</span>
           </div>
         );
       })}
@@ -1273,7 +1274,7 @@ function FavorDesc({ cat, onNext, onBack }) {
 }
 
 // ─── CATEGORY ─────────────────────────────────────────────────────────────────
-function Category({ cat, onUser, onBack, fd, cf }) {
+function Category({ cat, onUser, onBack, fd, cf, userCoords }) {
   const [st, setSt] = useState("14:00");
   const [ld, setLd] = useState(new Date().toISOString().split("T")[0]);
   const [lt, setLt] = useState("18:00");
@@ -1285,20 +1286,28 @@ function Category({ cat, onUser, onBack, fd, cf }) {
     setCargando(true);
     supabase
       .from("usuarios")
-      .select("id, nombre, carrera, rating_prom, total_favores")
+      .select("id, nombre, carrera, rating_prom, total_favores, ubicaciones(lat, lng, activo)")
       .in("tipo", ["prestador", "ambos"])
       .then(({ data }) => {
         if (!activo) return;
-        const todos = (data || []).map(u => ({
-          id: u.id,
-          name: u.nombre,
-          career: u.carrera,
-          rating: Number(u.rating_prom ?? 5).toFixed(1),
-          favors: u.total_favores ?? 0,
-          distance: "Cerca",
-          available: true,
-          av: u.nombre?.[0]?.toUpperCase() ?? "?",
-        }));
+        const todos = (data || []).map(u => {
+          const ub = u.ubicaciones?.[0];
+          let distM = null;
+          if (userCoords && ub?.lat && ub?.lng)
+            distM = haversine(userCoords.lat, userCoords.lng, Number(ub.lat), Number(ub.lng));
+          return {
+            id: u.id,
+            name: u.nombre,
+            career: u.carrera,
+            rating: Number(u.rating_prom ?? 5).toFixed(1),
+            favors: u.total_favores ?? 0,
+            distance: distM !== null ? fmtDist(distM) : "Cerca",
+            distM: distM ?? 999999,
+            available: ub?.activo ?? true,
+            av: u.nombre?.[0]?.toUpperCase() ?? "?",
+          };
+        });
+        todos.sort((a, b) => a.distM - b.distM);
         const filtrados = cf
           ? todos.filter(u => u.career.toLowerCase().includes(cf.split(" ")[0].toLowerCase()))
           : todos;
@@ -1306,7 +1315,7 @@ function Category({ cat, onUser, onBack, fd, cf }) {
         setCargando(false);
       });
     return () => { activo = false; };
-  }, [cf]);
+  }, [cf, userCoords]);
 
   const show = prestadores;
 
@@ -1463,15 +1472,21 @@ function Negotiate({ cat, user, onConfirm, onBack, onChat, cp }) {
 }
 
 // ─── CHAT ─────────────────────────────────────────────────────────────────────
-function Chat({ user, onBack }) {
-  const [msgs, setMsgs] = useState([
-    { f:"th", t:"Hola, vi tu solicitud. ¿En qué te puedo ayudar?" },
-    { f:"me", t:"Necesito ayuda con cálculo diferencial para mañana" },
-    { f:"th", t:"Claro, puedo en 30 min en la biblioteca central" },
-  ]);
+function Chat({ user, favorId, userId, onBack }) {
+  const { mensajes, enviarMensaje } = useChat(favorId);
   const [inp, setInp] = useState("");
   const bot = useRef();
-  const send = () => { if (!inp.trim()) return; setMsgs(m => [...m, { f:"me", t:inp }]); setInp(""); };
+
+  useEffect(() => {
+    bot.current?.scrollIntoView({ behavior:"smooth" });
+  }, [mensajes]);
+
+  const send = async () => {
+    const text = inp.trim();
+    if (!text) return;
+    setInp("");
+    try { await enviarMensaje(text); } catch {}
+  };
 
   return (
     <div className="screen" style={{ display:"flex", flexDirection:"column", background:"var(--bg)" }}>
@@ -1487,9 +1502,13 @@ function Chat({ user, onBack }) {
         </div>
       </div>
       <div style={{ flex:1, overflowY:"auto", padding:"14px 20px", display:"flex", flexDirection:"column", gap:2 }}>
-        {msgs.map((m, i) => (
-          <div key={i} className={`bbl ${m.f === "me" ? "bme" : "bth"}`}>{m.t}</div>
-        ))}
+        {mensajes.length === 0 && (
+          <div style={{ textAlign:"center", color:"var(--text3)", fontSize:13, paddingTop:32 }}>Inicia la conversación</div>
+        )}
+        {mensajes.map((m, i) => {
+          const esMe = m.remitente === userId;
+          return <div key={m.id || i} className={`bbl ${esMe ? "bme" : "bth"}`}>{m.contenido}</div>;
+        })}
         <div ref={bot} />
       </div>
       <div style={{ borderTop:"1px solid var(--border)", padding:"10px 16px 14px", background:"var(--bg)", flexShrink:0, display:"flex", gap:10, alignItems:"center" }}>
@@ -1598,9 +1617,18 @@ function Tracking({ user, onBack, estado }) {
 }
 
 // ─── SUCCESS ──────────────────────────────────────────────────────────────────
-function Success({ price, user, onHome }) {
+function Success({ price, user, onHome, onCalificar }) {
   const [rated, setRated] = useState(false);
   const [stars, setStars] = useState(0);
+  const [resena, setResena] = useState("");
+  const [sending, setSending] = useState(false);
+
+  const enviar = async () => {
+    if (!stars || sending) return;
+    setSending(true);
+    try { await onCalificar?.(stars, resena); setRated(true); } catch { setRated(true); }
+    setSending(false);
+  };
   return (
     <div className="screen col" style={{
       minHeight:800, padding:"0 24px", background:"var(--bg)",
@@ -1647,11 +1675,12 @@ function Success({ price, user, onHome }) {
           {stars > 0 && (
             <div className="iw" style={{ width:"100%" }}>
               <label className="lbl">Reseña (opcional)</label>
-              <input className="inp" placeholder="Excelente servicio, muy puntual…" />
+              <input className="inp" placeholder="Excelente servicio, muy puntual…"
+                value={resena} onChange={e => setResena(e.target.value)} />
             </div>
           )}
-          <button className="btn btn-p" disabled={stars === 0} onClick={() => setRated(true)} style={{ width:"100%" }}>
-            {stars === 0 ? "Selecciona una calificación" : "Enviar calificación"}
+          <button className="btn btn-p" disabled={stars === 0 || sending} onClick={enviar} style={{ width:"100%" }}>
+            {stars === 0 ? "Selecciona una calificación" : sending ? "Enviando…" : "Enviar calificación"}
           </button>
         </>
       ) : (
@@ -1976,6 +2005,8 @@ export default function FavoApp() {
   const { session, usuario, loading: authLoading, enviarOtp, verificarOtp, guardarPerfil, guardarHabilidades } = useAuth();
   const { crearFavor, aceptarFavor, hacerContraoferta, completarFavor, cargarFavores } = useFavores();
   const { suscribirNuevos, notificarFavor, suscribirEstado } = useRealtimeFavores();
+  const { calificar } = useCalificaciones();
+  const { actualizarUbicacion } = useUsuariosCercanos();
   const [screen,           setScreen]        = useState("splash");
   const [email,            setEmail]         = useState("");
   const [ui,               setUi]            = useState(null);
@@ -1994,6 +2025,7 @@ export default function FavoApp() {
   const [favorActual,      setFavorActual]   = useState(null);
   const [favores,          setFavores]       = useState([]);
   const [tiempos,          setTiempos]       = useState(null);
+  const [userCoords,       setUserCoords]    = useState(null);
 
   const recargarFavores = () => {
     if (usuario?.id) cargarFavores(usuario.id).then(setFavores).catch(() => {});
@@ -2019,6 +2051,23 @@ export default function FavoApp() {
       if (fav.estado === 'aceptado') toast_('¡Tu prestador aceptó el favor!');
     });
   }, [favorActual?.id]);
+
+  // Geolocalización real: pedir permiso y seguir posición
+  useEffect(() => {
+    if (!usuario?.id || !navigator.geolocation) return;
+    const wid = navigator.geolocation.watchPosition(
+      pos => setUserCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      () => {},
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
+    );
+    return () => navigator.geolocation.clearWatch(wid);
+  }, [usuario?.id]);
+
+  // Guardar ubicación en Supabase cuando cambia prov o coords
+  useEffect(() => {
+    if (!userCoords || !usuario?.id) return;
+    actualizarUbicacion(userCoords.lat, userCoords.lng, prov).catch(() => {});
+  }, [prov, userCoords]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -2123,7 +2172,7 @@ export default function FavoApp() {
             onBack={() => setScreen("home")} />}
           {screen==="category"   && selCat && <Category cat={selCat}
             onUser={(u, t) => { setUser(u); setTiempos(t); setScreen("negotiate"); }}
-            onBack={() => setScreen("favor-desc")} fd={fd} cf={cf} />}
+            onBack={() => setScreen("favor-desc")} fd={fd} cf={cf} userCoords={userCoords} />}
           {screen==="negotiate"  && selCat && selUser && <Negotiate cat={selCat} user={selUser}
             onConfirm={async p => {
               try {
@@ -2156,7 +2205,7 @@ export default function FavoApp() {
               } catch (err) { toast_(err.message); }
             }}
             onBack={() => setScreen("category")} onChat={() => setScreen("chat")} cp={counter} />}
-          {screen==="chat"       && selUser && <Chat user={selUser} onBack={() => setScreen("negotiate")} />}
+          {screen==="chat"       && selUser && <Chat user={selUser} favorId={favorActual?.id} userId={usuario?.id} onBack={() => setScreen("negotiate")} />}
           {screen==="tracking"   && selUser && <Tracking user={selUser} estado={favorStatus}
             onBack={async () => {
               if (favorActual?.id) {
@@ -2168,6 +2217,10 @@ export default function FavoApp() {
             onHome={() => {
               setScreen("home"); setNav("home");
               setCat(null); setUser(null); setCounter(null); setFavorActual(null);
+            }}
+            onCalificar={async (estrellas, resena) => {
+              if (favorActual?.id && selUser?.id)
+                await calificar({ favorId: favorActual.id, calificadoId: selUser.id, estrellas, resena });
             }} />}
           {screen==="wallet"     && <Wallet />}
           {screen==="notifs"     && <Notifs onIncoming={() => setSolicitud({ id:'demo', cliente_id:'demo', descripcion:INCOMING.desc, precio_oferta:INCOMING.price, categoria_nombre:INCOMING.cat, hora_inicio:'15:00', cliente:{ nombre:INCOMING.user, carrera:INCOMING.career, rating_prom:4.7 } })} />}
@@ -2175,7 +2228,7 @@ export default function FavoApp() {
             onBack={() => { setScreen("home"); setNav("home"); }}
             prov={prov} onTogProv={() => setProv(p => !p)} ui={ui} favores={favores} />}
 
-          {showNav && <BNav active={nav} onChange={handleNav} />}
+          {showNav && <BNav active={nav} onChange={handleNav} badge={!!solicitudEntrante} />}
         </div>
       </div>
     </>

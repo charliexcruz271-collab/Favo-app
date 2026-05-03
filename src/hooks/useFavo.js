@@ -174,13 +174,16 @@ export function useFavores() {
   };
 
   const cargarFavores = async (userId) => {
-    const { data, error } = await supabase
-      .from('favores')
-      .select('*, categorias(*)')
-      .eq('cliente_id', userId)
-      .order('created_at', { ascending: false });
-    if (error) throw error;
-    return data || [];
+    const [{ data: dCli }, { data: dPrest }] = await Promise.all([
+      supabase.from('favores').select('*, categorias(*)').eq('cliente_id', userId).order('created_at', { ascending: false }),
+      supabase.from('favores').select('*, categorias(*)').eq('prestador_id', userId).order('created_at', { ascending: false }),
+    ]);
+    const seen = new Set();
+    const todos = [...(dCli || []), ...(dPrest || [])].filter(f => {
+      if (seen.has(f.id)) return false;
+      seen.add(f.id); return true;
+    });
+    return todos.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
   };
 
   return { crearFavor, aceptarFavor, hacerContraoferta, completarFavor, cargarFavores };
