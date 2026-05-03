@@ -112,21 +112,20 @@ export function useFavores() {
     return data;
   };
 
-  // Aceptar un favor (prestador)
-  const aceptarFavor = async (favorId, prestadorId, precioFinal) => {
+  // clienteId se pasa explícitamente para evitar queries extra bajo RLS
+  const aceptarFavor = async (favorId, clienteId, prestadorId, precioFinal) => {
     const { error } = await supabase.from('favores').update({
       prestador_id: prestadorId,
       precio_final: precioFinal,
       estado: 'aceptado',
     }).eq('id', favorId);
     if (error) throw error;
-    // Crear transacción retenida
     await supabase.from('transacciones').insert({
       favor_id: favorId,
-      pagador_id: (await supabase.auth.getUser()).data.user.id,
+      pagador_id: clienteId,
       receptor_id: prestadorId,
       monto_total: precioFinal,
-      comision_favo: Math.round(precioFinal * 0.1), // 10% de comisión
+      comision_favo: Math.round(precioFinal * 0.1),
       monto_neto: Math.round(precioFinal * 0.9),
       estado: 'retenido',
     });
@@ -184,7 +183,47 @@ export function useFavores() {
     return data || [];
   };
 
-  return { crearFavor, aceptarFavor, completarFavor, cargarFavores };
+  return { crearFavor, aceptarFavor, hacerContraoferta, completarFavor, cargarFavores };
+}
+
+// ── REALTIME FAVORES ──────────────────────────────────────────────────────────
+
+export function useRealtimeFavores() {
+  // Prestador: subscribe to broadcast channel para solicitudes nuevas
+  const suscribirNuevos = (callback) => {
+    const ch = supabase
+      .channel('favo-solicitudes')
+      .on('broadcast', { event: 'nueva-solicitud' }, ({ payload }) => callback(payload))
+      .subscribe();
+    return () => supabase.removeChannel(ch);
+  };
+
+  // Cliente: broadcast al crear un favor para notificar a prestadores
+  const notificarFavor = (payload) =>
+    new Promise(resolve => {
+      const ch = supabase.channel('favo-solicitudes');
+      ch.subscribe(status => {
+        if (status !== 'SUBSCRIBED') return;
+        ch.send({ type: 'broadcast', event: 'nueva-solicitud', payload })
+          .finally(() => { supabase.removeChannel(ch); resolve(); });
+      });
+    });
+
+  // Cliente: escuchar actualizaciones de estado del favor activo (postgres_changes)
+  const suscribirEstado = (favorId, callback) => {
+    const ch = supabase
+      .channel(`favo-estado-${favorId}`)
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'favores',
+        filter: `id=eq.${favorId}`,
+      }, ({ new: fav }) => callback(fav))
+      .subscribe();
+    return () => supabase.removeChannel(ch);
+  };
+
+  return { suscribirNuevos, notificarFavor, suscribirEstado };
 }
 
 // ── USUARIOS CERCANOS ─────────────────────────────────────────────────────

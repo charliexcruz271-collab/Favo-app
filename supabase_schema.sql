@@ -197,3 +197,48 @@ create policy "Ver ubicación activa" on public.ubicaciones
 
 create policy "Actualizar propia ubicación" on public.ubicaciones
   for all using (auth.uid() = usuario_id);
+
+-- ============================================================
+-- POLÍTICAS ADICIONALES — ejecutar en Supabase SQL Editor
+-- ============================================================
+
+-- Permitir que prestadores acepten favores pendientes
+drop policy if exists "Actualizar favor" on public.favores;
+create policy "Actualizar favor" on public.favores
+  for update using (
+    auth.uid() = cliente_id or
+    auth.uid() = prestador_id or
+    (estado = 'pendiente' and exists (
+      select 1 from public.usuarios
+      where id = auth.uid() and tipo in ('prestador','ambos')
+    ))
+  );
+
+-- Negociaciones: insertar y ver
+create policy "Insertar negociacion" on public.negociaciones
+  for insert with check (auth.uid() = usuario_id);
+
+create policy "Ver negociaciones" on public.negociaciones
+  for select using (
+    exists (
+      select 1 from public.favores
+      where id = favor_id
+        and (auth.uid() = cliente_id or auth.uid() = prestador_id)
+    )
+  );
+
+-- Transacciones: ver las propias e insertar al aceptar un favor
+create policy "Ver transacciones propias" on public.transacciones
+  for select using (auth.uid() = pagador_id or auth.uid() = receptor_id);
+
+create policy "Insertar transaccion" on public.transacciones
+  for insert with check (
+    exists (
+      select 1 from public.favores
+      where id = favor_id
+        and (auth.uid() = cliente_id or auth.uid() = prestador_id)
+    )
+  );
+
+-- Habilitar realtime para la tabla favores (necesario para postgres_changes)
+alter publication supabase_realtime add table public.favores;

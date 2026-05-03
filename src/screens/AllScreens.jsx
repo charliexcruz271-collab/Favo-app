@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { useAuth, useFavores } from "../hooks/useFavo";
+import { useAuth, useFavores, useRealtimeFavores } from "../hooks/useFavo";
 import { supabase } from "../lib/supabase";
 
 // ─── GLOBAL STYLES ────────────────────────────────────────────────────────────
@@ -1127,30 +1127,37 @@ function Home({ onCat, onProfile, prov, onTogProv, onIncoming, ui, favores }) {
 }
 
 // ─── INCOMING ─────────────────────────────────────────────────────────────────
-function Incoming({ onAccept, onDecline, cat }) {
+function Incoming({ favor, onAceptar, onContraoferta, onDecline }) {
   const [step, setStep] = useState("view");
-  const range   = cat?.range || [10000, 50000];
-  const [counter, setCounter] = useState(INCOMING.price);
-  const pct = ((counter - range[0]) / (range[1] - range[0]) * 100).toFixed(1) + "%";
+  const precio  = favor.precio_oferta;
+  const [counter, setCounter] = useState(precio);
+  const minP = 3000, maxP = 100000;
+  const pct = ((counter - minP) / (maxP - minP) * 100).toFixed(1) + "%";
+  const nombre  = favor.cliente?.nombre  || "Cliente";
+  const carrera = favor.cliente?.carrera || "";
+  const ini     = nombre[0]?.toUpperCase() || "?";
+  const horaStr = favor.hora_inicio ? `Hoy ${favor.hora_inicio}` : null;
+  const fechaStr = favor.fecha_limite ? ` — ${favor.fecha_limite}` : "";
+  const horario = horaStr ? horaStr + fechaStr : "Sin horario definido";
 
   if (step === "counter") return (
     <div className="modal-bg">
       <div className="card" style={{ width:"100%", marginBottom:20, textAlign:"center", padding:24 }}>
         <div style={{ fontSize:11, fontWeight:500, color:"var(--text3)", letterSpacing:0.8, textTransform:"uppercase", marginBottom:8 }}>Tu contraoferta</div>
         <div style={{ fontSize:48, fontWeight:700, color:"var(--green)", lineHeight:1, marginBottom:4, letterSpacing:"-2px" }}>{fmt(counter)}</div>
-        <div style={{ fontSize:12, color:"var(--text2)" }}>Cliente ofreció {fmt(INCOMING.price)}</div>
+        <div style={{ fontSize:12, color:"var(--text2)" }}>Cliente ofreció {fmt(precio)}</div>
       </div>
       <div style={{ width:"100%", marginBottom:8 }}>
         <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, color:"var(--text3)", marginBottom:12, fontWeight:500 }}>
-          <span>{fmt(range[0])}</span><span>{fmt(range[1])}</span>
+          <span>{fmt(minP)}</span><span>{fmt(maxP)}</span>
         </div>
-        <input type="range" min={range[0]} max={range[1]} step={1000} value={counter}
+        <input type="range" min={minP} max={maxP} step={1000} value={counter}
           className="sldr" style={{ "--p":pct }} onChange={e => setCounter(Number(e.target.value))} />
       </div>
       <div style={{ fontSize:12, color:"var(--text3)", marginBottom:24, textAlign:"center" }}>Arrastra para ajustar</div>
       <div style={{ display:"flex", gap:10, width:"100%" }}>
         <button className="btn btn-o flex1" style={{ padding:14, fontSize:13 }} onClick={() => setStep("view")}>Volver</button>
-        <button className="btn btn-g flex1" style={{ padding:14, fontSize:13 }} onClick={() => onAccept(counter)}>Enviar</button>
+        <button className="btn btn-g flex1" style={{ padding:14, fontSize:13 }} onClick={() => onContraoferta(favor.id, counter)}>Enviar</button>
       </div>
     </div>
   );
@@ -1158,7 +1165,7 @@ function Incoming({ onAccept, onDecline, cat }) {
   return (
     <div className="modal-bg">
       <div style={{ fontSize:11, fontWeight:500, color:"var(--text3)", letterSpacing:0.8, textTransform:"uppercase", marginBottom:8 }}>
-        {INCOMING.distance} de ti
+        Solicitud en tiempo real
       </div>
       <div style={{ fontSize:24, fontWeight:700, letterSpacing:"-0.5px", textAlign:"center", marginBottom:20, lineHeight:1.2 }}>
         Nueva solicitud<br /><span style={{ color:"var(--accent)" }}>cercana</span>
@@ -1167,30 +1174,35 @@ function Incoming({ onAccept, onDecline, cat }) {
         <div style={{ position:"absolute", left:0, top:0, bottom:0, width:3, background:"var(--accent)" }} />
         <div style={{ paddingLeft:12 }}>
           <div className="row g2 mb2">
-            <div className="av av-m">L</div>
+            <div className="av av-m">{ini}</div>
             <div>
-              <div style={{ fontSize:14, fontWeight:600, color:"var(--text)" }}>{INCOMING.user}</div>
-              <div style={{ fontSize:12, color:"var(--text2)", marginTop:2 }}>{INCOMING.career}</div>
+              <div style={{ fontSize:14, fontWeight:600, color:"var(--text)" }}>{nombre}</div>
+              <div style={{ fontSize:12, color:"var(--text2)", marginTop:2 }}>{carrera}</div>
             </div>
+            {favor.cliente?.rating_prom && (
+              <div style={{ marginLeft:"auto", fontSize:12, color:"var(--amber)", fontWeight:600 }}>
+                ★ {Number(favor.cliente.rating_prom).toFixed(1)}
+              </div>
+            )}
           </div>
-          <div className="tag tag-b" style={{ marginBottom:10 }}>{INCOMING.cat}</div>
-          <div style={{ fontSize:13, color:"var(--text2)", lineHeight:1.6, marginBottom:12 }}>{INCOMING.desc}</div>
+          <div className="tag tag-b" style={{ marginBottom:10 }}>{favor.categoria_nombre}</div>
+          <div style={{ fontSize:13, color:"var(--text2)", lineHeight:1.6, marginBottom:12 }}>{favor.descripcion}</div>
           <div className="hr" style={{ margin:"10px 0" }} />
           <div className="row between mb1">
             <div style={{ fontSize:12, color:"var(--text3)" }}>Oferta</div>
-            <div style={{ fontSize:18, fontWeight:700, color:"var(--accent)", letterSpacing:"-0.5px" }}>{fmt(INCOMING.price)}</div>
+            <div style={{ fontSize:18, fontWeight:700, color:"var(--accent)", letterSpacing:"-0.5px" }}>{fmt(precio)}</div>
           </div>
           <div className="row between">
             <div style={{ fontSize:12, color:"var(--text3)" }}>Horario</div>
-            <div style={{ fontSize:12, fontWeight:500, color:"var(--text)" }}>{INCOMING.time}</div>
+            <div style={{ fontSize:12, fontWeight:500, color:"var(--text)" }}>{horario}</div>
           </div>
         </div>
       </div>
       <div style={{ display:"flex", gap:10, width:"100%", marginBottom:10 }}>
         <button className="btn btn-o flex1" style={{ padding:14, fontSize:13 }} onClick={onDecline}>Rechazar</button>
-        <button className="btn btn-p flex1" style={{ padding:14, fontSize:13 }} onClick={() => onAccept(INCOMING.price)}>Aceptar</button>
+        <button className="btn btn-p flex1" style={{ padding:14, fontSize:13 }} onClick={() => onAceptar(favor.id, favor.cliente_id, precio)}>Aceptar</button>
       </div>
-      <button className="btn btn-g" style={{ padding:14, fontSize:13 }} onClick={() => setStep("counter")}>
+      <button className="btn btn-g" style={{ width:"100%", padding:14, fontSize:13 }} onClick={() => setStep("counter")}>
         Hacer contraoferta
       </button>
     </div>
@@ -1497,39 +1509,65 @@ function Chat({ user, onBack }) {
 }
 
 // ─── TRACKING ─────────────────────────────────────────────────────────────────
-function Tracking({ user, onBack }) {
+function Tracking({ user, onBack, estado }) {
+  const aceptado = estado === 'aceptado' || estado === 'en_curso';
   return (
     <div className="screen px" style={{ paddingTop:16 }}>
       <div className="row g2 mb3">
         <button className="back" onClick={onBack}><IcoBack size={18} color="var(--text2)" /></button>
-        <div style={{ fontSize:16, fontWeight:600, color:"var(--text)" }}>Ubicación en vivo</div>
-      </div>
-      <div className="map-mock mb3">
-        <div className="mgrid" />
-        <div className="mdot" style={{ top:"45%", left:"48%" }} />
-        <div style={{
-          position:"absolute", width:10, height:10, borderRadius:"50%",
-          background:"var(--blue)", top:"30%", left:"62%",
-          boxShadow:"0 0 0 4px rgba(59,130,246,0.18)",
-        }} />
-        <div style={{
-          position:"absolute", bottom:12, left:12,
-          background:"rgba(10,12,17,0.80)", backdropFilter:"blur(8px)",
-          borderRadius:"var(--r-sm)", padding:"6px 12px",
-          display:"flex", gap:8, alignItems:"center",
-        }}>
-          <span style={{ width:7, height:7, borderRadius:"50%", background:"var(--accent)", display:"inline-block" }} />
-          <span style={{ fontSize:12, fontWeight:600, color:"var(--text)" }}>{user.name}</span>
-          <span style={{ fontSize:12, color:"var(--text2)" }}>50m</span>
-        </div>
-        <div style={{
-          position:"absolute", top:12, right:12,
-          background:"rgba(34,197,94,0.85)", backdropFilter:"blur(8px)",
-          borderRadius:"var(--r-sm)", padding:"6px 12px",
-        }}>
-          <span style={{ fontSize:11, fontWeight:600, color:"#fff" }}>En camino</span>
+        <div style={{ fontSize:16, fontWeight:600, color:"var(--text)" }}>
+          {aceptado ? "Ubicación en vivo" : "Esperando prestador"}
         </div>
       </div>
+
+      {!aceptado ? (
+        <div className="card mb3" style={{ textAlign:"center", padding:"32px 20px" }}>
+          <div style={{
+            width:52, height:52, borderRadius:"50%", background:"var(--acc-dim)",
+            border:"1px solid rgba(196,160,80,0.20)", display:"flex",
+            alignItems:"center", justifyContent:"center", margin:"0 auto 16px",
+          }}>
+            <IcoBell size={22} color="var(--accent)" />
+          </div>
+          <div style={{ fontSize:15, fontWeight:600, color:"var(--text)", marginBottom:8 }}>
+            Solicitud enviada
+          </div>
+          <div style={{ fontSize:13, color:"var(--text2)", lineHeight:1.6 }}>
+            Tu solicitud fue publicada. Un prestador cercano la verá y podrá aceptarla o hacer una contraoferta.
+          </div>
+          <div style={{ marginTop:16, fontSize:12, color:"var(--accent)", fontWeight:500 }}>
+            Recibirás una notificación cuando alguien acepte
+          </div>
+        </div>
+      ) : (
+        <div className="map-mock mb3">
+          <div className="mgrid" />
+          <div className="mdot" style={{ top:"45%", left:"48%" }} />
+          <div style={{
+            position:"absolute", width:10, height:10, borderRadius:"50%",
+            background:"var(--blue)", top:"30%", left:"62%",
+            boxShadow:"0 0 0 4px rgba(59,130,246,0.18)",
+          }} />
+          <div style={{
+            position:"absolute", bottom:12, left:12,
+            background:"rgba(10,12,17,0.80)", backdropFilter:"blur(8px)",
+            borderRadius:"var(--r-sm)", padding:"6px 12px",
+            display:"flex", gap:8, alignItems:"center",
+          }}>
+            <span style={{ width:7, height:7, borderRadius:"50%", background:"var(--accent)", display:"inline-block" }} />
+            <span style={{ fontSize:12, fontWeight:600, color:"var(--text)" }}>{user.name}</span>
+            <span style={{ fontSize:12, color:"var(--text2)" }}>50m</span>
+          </div>
+          <div style={{
+            position:"absolute", top:12, right:12,
+            background:"rgba(34,197,94,0.85)", backdropFilter:"blur(8px)",
+            borderRadius:"var(--r-sm)", padding:"6px 12px",
+          }}>
+            <span style={{ fontSize:11, fontWeight:600, color:"#fff" }}>En camino</span>
+          </div>
+        </div>
+      )}
+
       <div className="card mb3">
         <div className="row g2 mb3">
           <div className="av av-m">{user.av}</div>
@@ -1537,17 +1575,24 @@ function Tracking({ user, onBack }) {
             <div style={{ fontSize:14, fontWeight:600, color:"var(--text)" }}>{user.name}</div>
             <div style={{ fontSize:12, color:"var(--text2)" }}>{user.career}</div>
           </div>
-          <div className="tag tag-g">~3 min</div>
+          {aceptado
+            ? <div className="tag tag-g">~3 min</div>
+            : <div className="tag" style={{ background:"var(--acc-dim)", color:"var(--accent)", border:"1px solid rgba(196,160,80,0.20)", borderRadius:"var(--r-pill)", padding:"4px 10px", fontSize:11, fontWeight:600 }}>Pendiente</div>
+          }
         </div>
-        <div style={{ display:"flex", gap:10 }}>
-          {[[<IcoChat size={16}/>, "Chat"], [<IcoPhone size={16}/>, "Llamar"]].map(([ic, lb]) => (
-            <button key={lb} className="btn btn-o flex1" style={{ padding:"11px", fontSize:13, display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
-              <span style={{ color:"var(--text2)" }}>{ic}</span> {lb}
-            </button>
-          ))}
-        </div>
+        {aceptado && (
+          <div style={{ display:"flex", gap:10 }}>
+            {[[<IcoChat size={16}/>, "Chat"], [<IcoPhone size={16}/>, "Llamar"]].map(([ic, lb]) => (
+              <button key={lb} className="btn btn-o flex1" style={{ padding:"11px", fontSize:13, display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
+                <span style={{ color:"var(--text2)" }}>{ic}</span> {lb}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
-      <button className="btn btn-p" onClick={onBack}>Marcar como completado</button>
+      <button className="btn btn-p" onClick={onBack} disabled={!aceptado} style={{ opacity: aceptado ? 1 : 0.4 }}>
+        Marcar como completado
+      </button>
     </div>
   );
 }
@@ -1929,24 +1974,26 @@ function Profile({ onBack, prov, onTogProv, ui, favores }) {
 // ─── ROOT ─────────────────────────────────────────────────────────────────────
 export default function FavoApp() {
   const { session, usuario, loading: authLoading, enviarOtp, verificarOtp, guardarPerfil, guardarHabilidades } = useAuth();
-  const { crearFavor, completarFavor, cargarFavores } = useFavores();
-  const [screen,      setScreen]  = useState("splash");
-  const [email,       setEmail]   = useState("");
-  const [ui,          setUi]      = useState(null);
-  const [selCat,      setCat]     = useState(null);
-  const [selUser,     setUser]    = useState(null);
-  const [cprice,      setCprice]  = useState(null);
-  const [counter,     setCounter] = useState(null);
-  const [toast,       setToast]   = useState(null);
-  const [nav,         setNav]     = useState("home");
-  const [prov,        setProv]    = useState(false);
-  const [fd,          setFd]      = useState("");
-  const [cf,          setCf]      = useState("");
-  const [showInc,     setInc]     = useState(false);
-  const [registrando, setRegistrando] = useState(false);
-  const [favorActual, setFavorActual] = useState(null);
-  const [favores,     setFavores] = useState([]);
-  const [tiempos,     setTiempos] = useState(null);
+  const { crearFavor, aceptarFavor, hacerContraoferta, completarFavor, cargarFavores } = useFavores();
+  const { suscribirNuevos, notificarFavor, suscribirEstado } = useRealtimeFavores();
+  const [screen,           setScreen]        = useState("splash");
+  const [email,            setEmail]         = useState("");
+  const [ui,               setUi]            = useState(null);
+  const [selCat,           setCat]           = useState(null);
+  const [selUser,          setUser]          = useState(null);
+  const [cprice,           setCprice]        = useState(null);
+  const [counter,          setCounter]       = useState(null);
+  const [toast,            setToast]         = useState(null);
+  const [nav,              setNav]           = useState("home");
+  const [prov,             setProv]          = useState(false);
+  const [fd,               setFd]            = useState("");
+  const [cf,               setCf]            = useState("");
+  const [solicitudEntrante,setSolicitud]     = useState(null);
+  const [favorStatus,      setFavorStatus]   = useState(null);
+  const [registrando,      setRegistrando]   = useState(false);
+  const [favorActual,      setFavorActual]   = useState(null);
+  const [favores,          setFavores]       = useState([]);
+  const [tiempos,          setTiempos]       = useState(null);
 
   const recargarFavores = () => {
     if (usuario?.id) cargarFavores(usuario.id).then(setFavores).catch(() => {});
@@ -1955,6 +2002,23 @@ export default function FavoApp() {
   useEffect(() => { recargarFavores(); }, [usuario?.id]);
 
   const toast_ = msg => { setToast(msg); setTimeout(() => setToast(null), 2800); };
+
+  // Prestador: subscribe a solicitudes broadcast cuando modo prestador está activo
+  useEffect(() => {
+    const esPrest = usuario?.tipo === 'prestador' || usuario?.tipo === 'ambos';
+    if (!prov || !esPrest) return;
+    return suscribirNuevos(favor => setSolicitud(favor));
+  }, [prov, usuario?.id]);
+
+  // Cliente: subscribe a cambios de estado del favor activo via postgres_changes
+  useEffect(() => {
+    if (!favorActual?.id) return;
+    setFavorStatus(favorActual.estado || 'pendiente');
+    return suscribirEstado(favorActual.id, fav => {
+      setFavorStatus(fav.estado);
+      if (fav.estado === 'aceptado') toast_('¡Tu prestador aceptó el favor!');
+    });
+  }, [favorActual?.id]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -1990,14 +2054,26 @@ export default function FavoApp() {
               {toast}
             </div>
           )}
-          {showInc && (
-            <Incoming cat={selCat || CATS[0]}
-              onAccept={p => {
-                setInc(false);
-                if (p !== INCOMING.price) { setCounter(p); toast_(`Contraoferta de ${fmt(p)} enviada`); }
-                else toast_("Solicitud aceptada");
+          {solicitudEntrante && (
+            <Incoming
+              favor={solicitudEntrante}
+              onAceptar={async (favorId, clienteId, precio) => {
+                if (favorId !== 'demo') {
+                  try { await aceptarFavor(favorId, clienteId, usuario.id, precio); }
+                  catch (err) { toast_(err.message); return; }
+                }
+                setSolicitud(null);
+                toast_('¡Favor aceptado!');
               }}
-              onDecline={() => { setInc(false); toast_("Solicitud rechazada"); }}
+              onContraoferta={async (favorId, monto) => {
+                if (favorId !== 'demo') {
+                  try { await hacerContraoferta(favorId, monto); }
+                  catch (err) { toast_(err.message); return; }
+                }
+                setSolicitud(null);
+                toast_(`Contraoferta de ${fmt(monto)} enviada`);
+              }}
+              onDecline={() => setSolicitud(null)}
             />
           )}
 
@@ -2039,7 +2115,7 @@ export default function FavoApp() {
             onProfile={() => { setScreen("profile"); setNav("profile"); }}
             prov={prov}
             onTogProv={() => { setProv(p => !p); toast_(prov ? "Modo prestador desactivado" : "Modo prestador activado"); }}
-            onIncoming={() => setInc(true)}
+            onIncoming={() => setSolicitud({ id:'demo', cliente_id:'demo', descripcion:INCOMING.desc, precio_oferta:INCOMING.price, categoria_nombre:INCOMING.cat, hora_inicio:'15:00', cliente:{ nombre:INCOMING.user, carrera:INCOMING.career, rating_prom:4.7 } })}
             ui={ui} favores={favores}
           />}
           {screen==="favor-desc" && selCat && <FavorDesc cat={selCat}
@@ -2061,11 +2137,27 @@ export default function FavoApp() {
                   horaLimite:    tiempos?.horaLimite  || null,
                 });
                 setFavorActual(favor); setCprice(p); setScreen("tracking");
+                notificarFavor({
+                  id: favor.id,
+                  cliente_id: usuario?.id,
+                  descripcion: fd,
+                  precio_oferta: p,
+                  hora_inicio: tiempos?.horaInicio  || null,
+                  fecha_limite: tiempos?.fechaLimite || null,
+                  hora_limite: tiempos?.horaLimite  || null,
+                  categoria_id: selCat.id,
+                  categoria_nombre: selCat.name,
+                  cliente: {
+                    nombre:     ui?.nombre     || 'Cliente',
+                    carrera:    ui?.carrera    || '',
+                    rating_prom: ui?.rating_prom || 5,
+                  },
+                }).catch(() => {});
               } catch (err) { toast_(err.message); }
             }}
             onBack={() => setScreen("category")} onChat={() => setScreen("chat")} cp={counter} />}
           {screen==="chat"       && selUser && <Chat user={selUser} onBack={() => setScreen("negotiate")} />}
-          {screen==="tracking"   && selUser && <Tracking user={selUser}
+          {screen==="tracking"   && selUser && <Tracking user={selUser} estado={favorStatus}
             onBack={async () => {
               if (favorActual?.id) {
                 try { await completarFavor(favorActual.id); } catch (e) {}
@@ -2078,7 +2170,7 @@ export default function FavoApp() {
               setCat(null); setUser(null); setCounter(null); setFavorActual(null);
             }} />}
           {screen==="wallet"     && <Wallet />}
-          {screen==="notifs"     && <Notifs onIncoming={() => setInc(true)} />}
+          {screen==="notifs"     && <Notifs onIncoming={() => setSolicitud({ id:'demo', cliente_id:'demo', descripcion:INCOMING.desc, precio_oferta:INCOMING.price, categoria_nombre:INCOMING.cat, hora_inicio:'15:00', cliente:{ nombre:INCOMING.user, carrera:INCOMING.career, rating_prom:4.7 } })} />}
           {screen==="profile"    && <Profile
             onBack={() => { setScreen("home"); setNav("home"); }}
             prov={prov} onTogProv={() => setProv(p => !p)} ui={ui} favores={favores} />}
