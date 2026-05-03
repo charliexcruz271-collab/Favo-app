@@ -34,48 +34,62 @@ export function useAuth() {
     setLoading(false);
   };
 
-  const registrarEmail = async (email) => {
+  const enviarOtp = async (email) => {
     if (!email.endsWith('@uniandes.edu.co')) throw new Error('Solo correos @uniandes.edu.co');
-    const { data, error } = await supabase.auth.signUp({
+    const { error } = await supabase.auth.signInWithOtp({
       email,
-      password: crypto.randomUUID(),
-      options: { emailRedirectTo: null },
+      options: { shouldCreateUser: true },
     });
     if (error) throw error;
-    if (!data.user) throw new Error('Ya existe una cuenta con este correo');
   };
 
-  // Registro paso 3: guardar perfil
+  const verificarOtp = async (email, token) => {
+    const { error } = await supabase.auth.verifyOtp({
+      email,
+      token,
+      type: 'email',
+    });
+    if (error) throw error;
+  };
+
   const guardarPerfil = async (perfil) => {
-    const user = (await supabase.auth.getUser()).data.user;
-    // Verificar que el código estudiantil no esté duplicado
+    if (!session?.user) throw new Error('No hay sesión activa');
+    if (!perfil.nombre || !perfil.telefono || !perfil.codigo || !perfil.carrera || !perfil.tipo)
+      throw new Error('Faltan campos requeridos');
     const { data: existe } = await supabase
-      .from('usuarios').select('id').eq('codigo', perfil.codigo).single();
+      .from('usuarios').select('id')
+      .eq('codigo', perfil.codigo)
+      .neq('id', session.user.id)
+      .maybeSingle();
     if (existe) throw new Error('Este código estudiantil ya está registrado');
-
-    const { error } = await supabase.from('usuarios').insert({
-      id: user.id,
-      email: user.email,
-      ...perfil,
-    });
+    const { error } = await supabase.from('usuarios').upsert({
+      id:       session.user.id,
+      email:    session.user.email,
+      nombre:   perfil.nombre,
+      telefono: perfil.telefono,
+      codigo:   perfil.codigo,
+      carrera:  perfil.carrera,
+      semestre: perfil.semestre || null,
+      tipo:     perfil.tipo,
+      posgrado: perfil.posgrado || null,
+    }, { onConflict: 'id' });
     if (error) throw error;
-    await fetchUsuario(user.id);
+    await fetchUsuario(session.user.id);
   };
 
-  // Guardar habilidades del prestador
   const guardarHabilidades = async (habilidades, otras) => {
-    const user = (await supabase.auth.getUser()).data.user;
+    if (!session?.user) throw new Error('No hay sesión activa');
     const rows = Object.entries(habilidades).map(([categoria, detalle]) => ({
-      usuario_id: user.id, categoria, detalle,
+      usuario_id: session.user.id, categoria, detalle,
     }));
-    if (otras) rows.push({ usuario_id: user.id, categoria: 'otras', detalle: otras });
+    if (otras) rows.push({ usuario_id: session.user.id, categoria: 'otras', detalle: otras });
     const { error } = await supabase.from('habilidades').insert(rows);
     if (error) throw error;
   };
 
   const cerrarSesion = () => supabase.auth.signOut();
 
-  return { session, usuario, loading, registrarEmail, guardarPerfil, guardarHabilidades, cerrarSesion };
+  return { session, usuario, loading, enviarOtp, verificarOtp, guardarPerfil, guardarHabilidades, cerrarSesion };
 }
 
 // ── FAVORES ───────────────────────────────────────────────────────────────
@@ -160,7 +174,17 @@ export function useFavores() {
     return data;
   };
 
-  return { crearFavor, aceptarFavor, hacerContraoferta, completarFavor, misFavoresComoCliente, misFavoresComoPrestador };
+  const cargarFavores = async (userId) => {
+    const { data, error } = await supabase
+      .from('favores')
+      .select('*, categorias(*)')
+      .eq('cliente_id', userId)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return data || [];
+  };
+
+  return { crearFavor, aceptarFavor, completarFavor, cargarFavores };
 }
 
 // ── USUARIOS CERCANOS ─────────────────────────────────────────────────────

@@ -151,6 +151,9 @@ alter table public.ubicaciones    enable row level security;
 create policy "Perfiles públicos" on public.usuarios
   for select using (true);
 
+create policy "Usuario crea su perfil" on public.usuarios
+  for insert with check (auth.uid() = id);
+
 create policy "Usuario edita su perfil" on public.usuarios
   for update using (auth.uid() = id);
 

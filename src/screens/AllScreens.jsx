@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { useAuth } from "../hooks/useFavo";
+import { useAuth, useFavores } from "../hooks/useFavo";
 
 // ─── GLOBAL STYLES ────────────────────────────────────────────────────────────
 const G = `
@@ -779,9 +779,10 @@ function RegCode({ email, onNext }) {
 }
 
 // ─── REG VERIFY ───────────────────────────────────────────────────────────────
-function RegVerify({ email, onNext }) {
+function RegVerify({ email, onNext, onReenviar }) {
   const [digits, setDigits] = useState(["","","","","",""]);
   const refs = useRef([]);
+  const [secs, setSecs] = useState(60);
   const filled = digits.every(d => d !== "");
   const hc = (i, v) => {
     if (!/^\d?$/.test(v)) return;
@@ -789,6 +790,11 @@ function RegVerify({ email, onNext }) {
     if (v && i < 5) refs.current[i + 1]?.focus();
   };
   const hk = (i, e) => { if (e.key === "Backspace" && !digits[i] && i > 0) refs.current[i - 1]?.focus(); };
+  useEffect(() => {
+    if (secs <= 0) return;
+    const t = setTimeout(() => setSecs(s => s - 1), 1000);
+    return () => clearTimeout(t);
+  }, [secs]);
   return (
     <div className="screen px" style={{ paddingTop:28 }}>
       <div className="sdots mb3"><div className="sdot on"/><div className="sdot on"/><div className="sdot on"/><div className="sdot"/><div className="sdot"/></div>
@@ -796,7 +802,7 @@ function RegVerify({ email, onNext }) {
       <div style={{ fontSize:14, color:"var(--text2)", marginTop:8, marginBottom:32 }}>
         Código enviado a <span style={{ color:"var(--text)", fontWeight:600 }}>{email}</span>
       </div>
-      <div style={{ display:"flex", gap:9, justifyContent:"center", marginBottom:24 }}>
+      <div style={{ display:"flex", gap:9, justifyContent:"center", marginBottom:16 }}>
         {digits.map((d, i) => (
           <input key={i} ref={el => refs.current[i] = el} value={d}
             onChange={e => hc(i, e.target.value)} onKeyDown={e => hk(i, e)}
@@ -810,13 +816,25 @@ function RegVerify({ email, onNext }) {
             }} />
         ))}
       </div>
-      <div style={{ fontSize:12, color:"var(--text3)", marginBottom:24, textAlign:"center" }}>
-        Ingresa el código de 6 dígitos enviado a tu correo
+      <div style={{ fontSize:12, color:"#c9a84c", marginBottom:24, textAlign:"center", lineHeight:1.6 }}>
+        El correo puede tomar unos minutos en llegar.<br />
+        Revisa tu bandeja de entrada y carpeta de spam.
       </div>
       <button className="btn btn-p mb2" disabled={!filled} onClick={() => onNext(digits.join(""))}>Continuar</button>
-      <div style={{ fontSize:13, color:"var(--text2)", textAlign:"center" }}>
-        ¿No recibiste?{" "}
-        <span style={{ color:"var(--accent)", fontWeight:600, cursor:"pointer" }}>Reenviar</span>
+      <div style={{ textAlign:"center", marginTop:12 }}>
+        {secs > 0 ? (
+          <div style={{ fontSize:13, color:"var(--text3)" }}>
+            Reenviar código en <span style={{ fontWeight:600, color:"var(--text2)" }}>{secs}s</span>
+          </div>
+        ) : (
+          <button
+            style={{ background:"none", border:"none", cursor:"pointer", fontSize:13,
+              color:"var(--accent)", fontWeight:600, fontFamily:"var(--font)", padding:0 }}
+            onClick={() => { onReenviar(); setSecs(60); }}
+          >
+            Reenviar código
+          </button>
+        )}
       </div>
     </div>
   );
@@ -827,11 +845,13 @@ function RegUserType({ onNext }) {
   const [tipo, setTipo]       = useState(null);
   const [nombre, setNombre]   = useState("");
   const [telefono, setTel]    = useState("");
+  const [codigo, setCodigo]   = useState("");
   const [carrera, setCarrera] = useState("");
   const [semestre, setSem]    = useState("");
   const [posgrado, setPg]     = useState("");
   const esPg = carrera === "Posgrado";
-  const valid = tipo && nombre.trim().length > 3 && telefono.length >= 10 && carrera &&
+  const valid = tipo && nombre.trim().length > 3 && telefono.length >= 10 &&
+    codigo.trim().length >= 7 && carrera &&
     (esPg ? posgrado.trim().length > 3 : semestre);
 
   const roles = [
@@ -879,6 +899,11 @@ function RegUserType({ onNext }) {
           onChange={e => setTel(e.target.value.replace(/\D/g, ""))} maxLength={10} />
       </div>
       <div className="iw">
+        <label className="lbl">Código estudiantil</label>
+        <input className="inp" placeholder="202312345" value={codigo} type="tel"
+          onChange={e => setCodigo(e.target.value.replace(/\D/g, ""))} maxLength={10} />
+      </div>
+      <div className="iw">
         <label className="lbl">Programa académico</label>
         <select className="inp" value={carrera}
           onChange={e => { setCarrera(e.target.value); setPg(""); setSem(""); }}
@@ -919,7 +944,7 @@ function RegUserType({ onNext }) {
       )}
 
       <button className="btn btn-p" style={{ marginTop:8 }} disabled={!valid}
-        onClick={() => onNext({ tipo, nombre, telefono, carrera, semestre, posgrado })}>
+        onClick={() => onNext({ tipo, nombre, telefono, codigo, carrera, semestre, posgrado })}>
         {(tipo === "prestador" || tipo === "ambos") ? "Configurar habilidades" : "Entrar a Favo"}
       </button>
     </div>
@@ -1002,7 +1027,7 @@ function RegHabilidades({ userInfo, onNext }) {
 }
 
 // ─── HOME ─────────────────────────────────────────────────────────────────────
-function Home({ onCat, onProfile, prov, onTogProv, onIncoming, ui }) {
+function Home({ onCat, onProfile, prov, onTogProv, onIncoming, ui, favores }) {
   const esPrest = ui?.tipo === "prestador" || ui?.tipo === "ambos";
   const nombre  = ui?.nombre?.split(" ")[0] || "Alejandro";
   const prog    = ui?.posgrado ? ui.posgrado : (ui?.carrera || "Uniandes");
@@ -1060,10 +1085,10 @@ function Home({ onCat, onProfile, prov, onTogProv, onIncoming, ui }) {
         }}>
           <div>
             <div style={{ fontSize:11, fontWeight:500, color:"var(--accent)", letterSpacing:0.8, textTransform:"uppercase", marginBottom:4 }}>
-              Solicitudes activas
+              Mis favores activos
             </div>
             <div style={{ fontSize:24, fontWeight:700, letterSpacing:"-0.5px", color:"var(--text)" }}>
-              3 cerca de ti
+              {(() => { const n = (favores||[]).filter(f => f.estado !== 'completado' && f.estado !== 'cancelado').length; return n > 0 ? `${n} activo${n > 1 ? 's' : ''}` : 'Sin activos'; })()}
             </div>
           </div>
           <div style={{
@@ -1284,7 +1309,7 @@ function Category({ cat, onUser, onBack, fd, cf }) {
         <div className="px">
           <div className="t-label mb2">Objetos disponibles</div>
           {OBJECTS.map(o => (
-            <div key={o.id} className="obj-card" onClick={() => onUser(USERS[0])}>
+            <div key={o.id} className="obj-card" onClick={() => onUser(USERS[0], { horaInicio: st, fechaLimite: ld, horaLimite: lt })}>
               <div className="obj-img"><IcoBox size={20} color="var(--text3)" /></div>
               <div className="flex1">
                 <div style={{ fontSize:14, fontWeight:600, color:"var(--text)", marginBottom:3 }}>{o.name}</div>
@@ -1305,7 +1330,7 @@ function Category({ cat, onUser, onBack, fd, cf }) {
           </div>
           {show.map(u => (
             <div key={u.id} className={`ucard ${!u.available ? "busy" : ""}`}
-              onClick={() => u.available && onUser(u)}>
+              onClick={() => u.available && onUser(u, { horaInicio: st, fechaLimite: ld, horaLimite: lt })}>
               <div className="av av-m">{u.av}</div>
               <div className="flex1">
                 <div style={{ fontSize:14, fontWeight:600, color:"var(--text)", marginBottom:3 }}>{u.name}</div>
@@ -1670,7 +1695,7 @@ function Notifs({ onIncoming }) {
 }
 
 // ─── PROFILE ──────────────────────────────────────────────────────────────────
-function Profile({ onBack, prov, onTogProv, ui }) {
+function Profile({ onBack, prov, onTogProv, ui, favores }) {
   const [tab, setTab] = useState("info");
   const esPrest = ui?.tipo === "prestador" || ui?.tipo === "ambos";
   const esCli   = ui?.tipo === "cliente"   || ui?.tipo === "ambos";
@@ -1729,7 +1754,10 @@ function Profile({ onBack, prov, onTogProv, ui }) {
       {tab === "info" && (
         <div className="px" style={{ paddingTop:16 }}>
           <div className="row g2 mb3">
-            {[["★","4.8","Rating"],["✓","12","Favores"],["$","$187k","Total"]].map(([ic,v,l]) => (
+            {[
+              ["★", ui?.rating_prom != null ? Number(ui.rating_prom).toFixed(1) : "5.0", "Rating"],
+              ["✓", ui?.total_favores ?? 0, "Favores"],
+            ].map(([ic,v,l]) => (
               <div key={l} className="stat">
                 <div style={{ fontSize:12, color:"var(--text3)", marginBottom:6 }}>{ic}</div>
                 <div style={{ fontSize:18, fontWeight:700, color:"var(--accent)", letterSpacing:"-0.5px" }}>{v}</div>
@@ -1740,12 +1768,12 @@ function Profile({ onBack, prov, onTogProv, ui }) {
           <div className="card">
             <div className="t-label mb3">Datos personales</div>
             {[
-              ["Correo",    "a.garcia@uniandes.edu.co"],
-              ["Código",    "202312345"],
-              ["Teléfono",  ui?.telefono || "3101234567"],
-              ["Programa",  ui?.posgrado ? `Posgrado: ${ui.posgrado}` : (ui?.carrera || "Ing. de Sistemas")],
-              ...(!ui?.posgrado ? [["Semestre", (ui?.semestre || "5°") + " semestre"]] : []),
-            ].map(([lb, val]) => (
+              ["Correo",    ui?.email   || ""],
+              ["Código",    ui?.codigo  || ""],
+              ["Teléfono",  ui?.telefono || ""],
+              ["Programa",  ui?.posgrado ? `Posgrado: ${ui.posgrado}` : (ui?.carrera || "")],
+              ...(!ui?.posgrado && ui?.semestre ? [["Semestre", ui.semestre + " semestre"]] : []),
+            ].filter(([, val]) => val).map(([lb, val]) => (
               <div key={lb} style={{
                 display:"flex", justifyContent:"space-between", alignItems:"center",
                 paddingBottom:11, marginBottom:11, borderBottom:"1px solid var(--border)",
@@ -1760,22 +1788,37 @@ function Profile({ onBack, prov, onTogProv, ui }) {
 
       {tab === "pedidos" && (
         <div className="px" style={{ paddingTop:16 }}>
-          {[
-            { icon:<IcoBook size={16}/>,  title:"Tutoría Cálculo",     status:"Completado", price:25000, c:"var(--green)" },
-            { icon:<IcoCode size={16}/>,  title:"Ayuda con Python",    status:"Completado", price:40000, c:"var(--green)" },
-            { icon:<IcoBox size={16}/>,   title:"Préstamo calculadora",status:"Activo",     price:8000,  c:"var(--amber)" },
-          ].map((h, i) => (
-            <div key={i} className="card mb2">
-              <div className="row g2">
-                <div style={{ width:38, height:38, borderRadius:"var(--r-sm)", background:"var(--surface2)", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, color:"var(--text2)" }}>{h.icon}</div>
-                <div className="flex1">
-                  <div style={{ fontSize:14, fontWeight:600, color:"var(--text)", marginBottom:3 }}>{h.title}</div>
-                  <div style={{ fontSize:12, color:h.c, fontWeight:500 }}>{h.status}</div>
-                </div>
-                <div style={{ fontSize:14, fontWeight:700, color:"var(--accent)", letterSpacing:"-0.3px" }}>{fmt(h.price)}</div>
-              </div>
+          {(favores || []).length === 0 ? (
+            <div className="card" style={{ textAlign:"center", padding:28 }}>
+              <div style={{ fontSize:15, fontWeight:600, color:"var(--text)", marginBottom:6 }}>Sin pedidos aún</div>
+              <div style={{ fontSize:13, color:"var(--text2)" }}>Tus favores aparecerán aquí</div>
             </div>
-          ))}
+          ) : (favores || []).map(f => {
+            const activo  = f.estado !== 'completado' && f.estado !== 'cancelado';
+            const color   = f.estado === 'completado' ? "var(--green)" : f.estado === 'cancelado' ? "var(--err)" : "var(--amber)";
+            const label   = f.estado === 'completado' ? "Completado" : f.estado === 'cancelado' ? "Cancelado" : "Activo";
+            return (
+              <div key={f.id} className="card mb2">
+                <div className="row g2">
+                  <div style={{ width:38, height:38, borderRadius:"var(--r-sm)", background:"var(--surface2)", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, color:"var(--text2)" }}>
+                    <IcoBook size={16} />
+                  </div>
+                  <div className="flex1">
+                    <div style={{ fontSize:14, fontWeight:600, color:"var(--text)", marginBottom:3 }}>
+                      {f.categorias?.nombre || f.categoria_id}
+                    </div>
+                    <div style={{ fontSize:12, color:"var(--text3)", marginBottom:3, lineHeight:1.4 }}>
+                      {f.descripcion?.slice(0, 60)}{f.descripcion?.length > 60 ? '…' : ''}
+                    </div>
+                    <div style={{ fontSize:12, color, fontWeight:500 }}>{label}</div>
+                  </div>
+                  <div style={{ fontSize:14, fontWeight:700, color:"var(--accent)", letterSpacing:"-0.3px" }}>
+                    {fmt(f.precio_oferta)}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -1789,7 +1832,10 @@ function Profile({ onBack, prov, onTogProv, ui }) {
             <button className={`tog ${prov ? "on" : "off"}`} onClick={onTogProv}><div className="tok" /></button>
           </div>
           <div className="row g2 mb3">
-            {[["★","4.9","Rating"],["✓","28","Favores"],["$","$342k","Ganado"]].map(([ic,v,l]) => (
+            {[
+              ["★", ui?.rating_prom != null ? Number(ui.rating_prom).toFixed(1) : "5.0", "Rating"],
+              ["✓", ui?.total_favores ?? 0, "Favores"],
+            ].map(([ic,v,l]) => (
               <div key={l} className="stat">
                 <div style={{ fontSize:12, color:"var(--text3)", marginBottom:6 }}>{ic}</div>
                 <div style={{ fontSize:18, fontWeight:700, color:"var(--green)", letterSpacing:"-0.5px" }}>{v}</div>
@@ -1847,32 +1893,44 @@ function Profile({ onBack, prov, onTogProv, ui }) {
 
 // ─── ROOT ─────────────────────────────────────────────────────────────────────
 export default function FavoApp() {
-  const { session, usuario, loading: authLoading, registrarEmail } = useAuth();
-  const [screen,  setScreen]  = useState("splash");
-  const [email,   setEmail]   = useState("");
-  const [ui,      setUi]      = useState(null);
-  const [selCat,  setCat]     = useState(null);
-  const [selUser, setUser]    = useState(null);
-  const [cprice,  setCprice]  = useState(null);
-  const [counter, setCounter] = useState(null);
-  const [toast,   setToast]   = useState(null);
-  const [nav,     setNav]     = useState("home");
-  const [prov,    setProv]    = useState(false);
-  const [fd,      setFd]      = useState("");
-  const [cf,      setCf]      = useState("");
-  const [showInc, setInc]     = useState(false);
+  const { session, usuario, loading: authLoading, enviarOtp, verificarOtp, guardarPerfil, guardarHabilidades } = useAuth();
+  const { crearFavor, completarFavor, cargarFavores } = useFavores();
+  const [screen,      setScreen]  = useState("splash");
+  const [email,       setEmail]   = useState("");
+  const [ui,          setUi]      = useState(null);
+  const [selCat,      setCat]     = useState(null);
+  const [selUser,     setUser]    = useState(null);
+  const [cprice,      setCprice]  = useState(null);
+  const [counter,     setCounter] = useState(null);
+  const [toast,       setToast]   = useState(null);
+  const [nav,         setNav]     = useState("home");
+  const [prov,        setProv]    = useState(false);
+  const [fd,          setFd]      = useState("");
+  const [cf,          setCf]      = useState("");
+  const [showInc,     setInc]     = useState(false);
+  const [registrando, setRegistrando] = useState(false);
+  const [favorActual, setFavorActual] = useState(null);
+  const [favores,     setFavores] = useState([]);
+  const [tiempos,     setTiempos] = useState(null);
+
+  const recargarFavores = () => {
+    if (usuario?.id) cargarFavores(usuario.id).then(setFavores).catch(() => {});
+  };
+
+  useEffect(() => { recargarFavores(); }, [usuario?.id]);
 
   const toast_ = msg => { setToast(msg); setTimeout(() => setToast(null), 2800); };
 
   useEffect(() => {
     if (authLoading) return;
     if (session) {
-      if (usuario) { setScreen("home"); setNav("home"); }
-      else setScreen("reg-type");
+      if (usuario) { setRegistrando(false); setUi(usuario); setScreen("home"); setNav("home"); }
+      else if (!registrando) setScreen("reg-type");
     } else {
+      setRegistrando(false);
       setScreen("splash");
     }
-  }, [session, usuario, authLoading]);
+  }, [session, usuario, authLoading, registrando]);
 
   const handleNav = id => {
     setNav(id);
@@ -1882,7 +1940,7 @@ export default function FavoApp() {
     if (id === "profile") setScreen("profile");
   };
 
-  const noNav = ["splash","reg-email","reg-type","reg-hab","success"];
+  const noNav = ["splash","reg-email","reg-verify","reg-type","reg-hab","success"];
   const showNav = !noNav.includes(screen);
 
   return (
@@ -1909,17 +1967,36 @@ export default function FavoApp() {
           )}
 
           {screen==="splash"    && <Splash onNext={() => setScreen("reg-email")} />}
-          {screen==="reg-email" && <RegEmail onNext={async (e) => {
-            try { await registrarEmail(e); }
+          {screen==="reg-email" && <RegEmail onNext={(e) => {
+            setEmail(e);
+            setScreen("reg-verify");
+            enviarOtp(e).catch(err => toast_(err.message));
+          }} />}
+          {screen==="reg-verify" && <RegVerify email={email} onNext={async (token) => {
+            setRegistrando(true);
+            try { await verificarOtp(email, token); setScreen("reg-type"); }
+            catch (err) { setRegistrando(false); toast_(err.message); }
+          }} onReenviar={async () => {
+            try { await enviarOtp(email); toast_("Código reenviado"); }
             catch (err) { toast_(err.message); }
           }} />}
-          {screen==="reg-type"  && <RegUserType onNext={info => {
-            setUi(info);
-            if (info.tipo === "prestador" || info.tipo === "ambos") setScreen("reg-hab");
-            else { toast_("Bienvenido a Favo"); setScreen("home"); setNav("home"); }
+          {screen==="reg-type"  && <RegUserType onNext={async info => {
+            if (info.tipo === "prestador" || info.tipo === "ambos") {
+              setUi(info);
+              setScreen("reg-hab");
+            } else {
+              try { await guardarPerfil(info); toast_("Bienvenido a Favo"); }
+              catch (err) { toast_(err.message); }
+            }
           }} />}
-          {screen==="reg-hab"   && <RegHabilidades userInfo={ui} onNext={info => {
-            setUi(info); toast_("Bienvenido a Favo"); setScreen("home"); setNav("home");
+          {screen==="reg-hab"   && <RegHabilidades userInfo={ui} onNext={async info => {
+            try {
+              const { habilidades, otrasHabilidades, ...perfil } = info;
+              await guardarPerfil(perfil);
+              if (Object.keys(habilidades).length > 0 || otrasHabilidades)
+                await guardarHabilidades(habilidades, otrasHabilidades);
+              toast_("Bienvenido a Favo");
+            } catch (err) { toast_(err.message); }
           }} />}
 
           {screen==="home"       && <Home
@@ -1928,27 +2005,48 @@ export default function FavoApp() {
             prov={prov}
             onTogProv={() => { setProv(p => !p); toast_(prov ? "Modo prestador desactivado" : "Modo prestador activado"); }}
             onIncoming={() => setInc(true)}
-            ui={ui}
+            ui={ui} favores={favores}
           />}
           {screen==="favor-desc" && selCat && <FavorDesc cat={selCat}
             onNext={(d,c) => { setFd(d); setCf(c); setScreen("category"); }}
             onBack={() => setScreen("home")} />}
           {screen==="category"   && selCat && <Category cat={selCat}
-            onUser={u => { setUser(u); setScreen("negotiate"); }}
+            onUser={(u, t) => { setUser(u); setTiempos(t); setScreen("negotiate"); }}
             onBack={() => setScreen("favor-desc")} fd={fd} cf={cf} />}
           {screen==="negotiate"  && selCat && selUser && <Negotiate cat={selCat} user={selUser}
-            onConfirm={p => { setCprice(p); setScreen("tracking"); }}
+            onConfirm={async p => {
+              try {
+                const favor = await crearFavor({
+                  categoriaId:   selCat.id,
+                  descripcion:   fd,
+                  carreraFiltro: cf || null,
+                  precioOferta:  p,
+                  horaInicio:    tiempos?.horaInicio  || null,
+                  fechaLimite:   tiempos?.fechaLimite || null,
+                  horaLimite:    tiempos?.horaLimite  || null,
+                });
+                setFavorActual(favor); setCprice(p); setScreen("tracking");
+              } catch (err) { toast_(err.message); }
+            }}
             onBack={() => setScreen("category")} onChat={() => setScreen("chat")} cp={counter} />}
           {screen==="chat"       && selUser && <Chat user={selUser} onBack={() => setScreen("negotiate")} />}
           {screen==="tracking"   && selUser && <Tracking user={selUser}
-            onBack={() => { toast_("Favor completado"); setScreen("success"); }} />}
+            onBack={async () => {
+              if (favorActual?.id) {
+                try { await completarFavor(favorActual.id); } catch (e) {}
+              }
+              toast_("Favor completado"); setScreen("success"); recargarFavores();
+            }} />}
           {screen==="success"    && selUser && <Success price={cprice} user={selUser}
-            onHome={() => { setScreen("home"); setNav("home"); setCat(null); setUser(null); setCounter(null); }} />}
+            onHome={() => {
+              setScreen("home"); setNav("home");
+              setCat(null); setUser(null); setCounter(null); setFavorActual(null);
+            }} />}
           {screen==="wallet"     && <Wallet />}
           {screen==="notifs"     && <Notifs onIncoming={() => setInc(true)} />}
           {screen==="profile"    && <Profile
             onBack={() => { setScreen("home"); setNav("home"); }}
-            prov={prov} onTogProv={() => setProv(p => !p)} ui={ui} />}
+            prov={prov} onTogProv={() => setProv(p => !p)} ui={ui} favores={favores} />}
 
           {showNav && <BNav active={nav} onChange={handleNav} />}
         </div>
