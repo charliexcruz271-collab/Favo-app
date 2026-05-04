@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from "react";
-import { useAuth, useFavores, useRealtimeFavores, useChat, useCalificaciones, useUsuariosCercanos, useWebRTC, useUbicacionRealtime } from "../hooks/useFavoNew";
+import { useAuth, useFavores, useRealtimeFavores, useChat, useCalificaciones, useUsuariosCercanos, useWebRTC, useUbicacionRealtime, useExplorar } from "../hooks/useFavoNew";
 import { supabase } from "../lib/supabase";
 
 // ─── GLOBAL STYLES ────────────────────────────────────────────────────────────
@@ -1966,6 +1966,152 @@ function Success({ price, user, onHome, onCalificar }) {
 }
 
 // ─── WALLET ───────────────────────────────────────────────────────────────────
+// ─── EXPLORAR ─────────────────────────────────────────────────────────────────
+function Explorar({ usuario, onAceptar }) {
+  const { favores, loading } = useExplorar();
+  const [q, setQ]           = useState("");
+  const [catF, setCatF]     = useState("todos");
+  const [acpId, setAcpId]   = useState(null);
+  const esPrest = usuario?.tipo === 'prestador' || usuario?.tipo === 'ambos';
+
+  const fmtAgo = iso => {
+    const s = Math.floor((Date.now() - new Date(iso)) / 1000);
+    if (s < 60)   return "Ahora";
+    if (s < 3600) return `${Math.floor(s/60)} min`;
+    if (s < 86400)return `${Math.floor(s/3600)} h`;
+    return `${Math.floor(s/86400)} d`;
+  };
+
+  const filtered = favores.filter(f => {
+    if (f.cliente_id === usuario?.id) return false;
+    if (catF !== "todos" && f.categoria_id !== catF) return false;
+    const lq = q.toLowerCase().trim();
+    if (lq && !f.descripcion?.toLowerCase().includes(lq) && !f.categorias?.nombre?.toLowerCase().includes(lq)) return false;
+    return true;
+  });
+
+  return (
+    <div className="screen" style={{ display:"flex", flexDirection:"column", background:"var(--bg)" }}>
+      {/* Header */}
+      <div style={{ padding:"0 20px 12px", flexShrink:0 }}>
+        <div className="row between mb2">
+          <div>
+            <div style={{ fontSize:22, fontWeight:700, letterSpacing:"-0.4px", color:"var(--text)" }}>
+              Explorar
+            </div>
+            <div style={{ fontSize:12, color:"var(--text3)", marginTop:2 }}>
+              {loading ? "Cargando…" : `${filtered.length} disponible${filtered.length !== 1 ? "s" : ""}`}
+              {!loading && <span style={{ color:"var(--accent)", marginLeft:6, fontSize:10, fontWeight:600, letterSpacing:0.5 }}>● EN VIVO</span>}
+            </div>
+          </div>
+        </div>
+        {/* Barra de búsqueda */}
+        <div style={{ position:"relative", marginBottom:0 }}>
+          <svg style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)", pointerEvents:"none" }} width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input className="inp" placeholder="Buscar por descripción o categoría…" value={q}
+            onChange={e => setQ(e.target.value)}
+            style={{ paddingLeft:36, marginBottom:0, fontSize:13, padding:"10px 12px 10px 36px" }} />
+        </div>
+      </div>
+
+      {/* Filtros por categoría */}
+      <div style={{ display:"flex", gap:8, overflowX:"auto", padding:"10px 20px 12px", flexShrink:0, scrollbarWidth:"none" }}>
+        {[{ id:"todos", name:"Todos", icon:"⚡" }, ...CATS.map(c => ({ id:c.id, name:c.name, icon:c.id==="academico"?"📚":c.id==="diseno"?"🎨":c.id==="tech"?"💻":c.id==="mandados"?"🏃":c.id==="habilidades"?"🏋️":"📦" }))].map(c => (
+          <button key={c.id} onClick={() => setCatF(c.id)} style={{
+            flexShrink:0, padding:"6px 13px", borderRadius:"var(--r-pill)", fontSize:12, fontWeight:600,
+            cursor:"pointer", border:"none", transition:"all .15s",
+            background: catF === c.id ? "var(--accent)" : "var(--surface)",
+            color: catF === c.id ? "#000" : "var(--text2)",
+            display:"flex", alignItems:"center", gap:5,
+          }}>
+            <span style={{ fontSize:13 }}>{c.icon}</span> {c.name}
+          </button>
+        ))}
+      </div>
+
+      {/* Lista */}
+      <div style={{ flex:1, overflowY:"auto", padding:"0 20px 16px" }}>
+        {loading ? (
+          <div style={{ textAlign:"center", padding:"48px 0", color:"var(--text3)", fontSize:13 }}>
+            Cargando favores…
+          </div>
+        ) : filtered.length === 0 ? (
+          <div style={{ textAlign:"center", padding:"48px 20px" }}>
+            <div style={{ fontSize:34, marginBottom:12 }}>🔍</div>
+            <div style={{ fontSize:15, fontWeight:600, color:"var(--text)", marginBottom:6 }}>
+              {q || catF !== "todos" ? "Sin resultados" : "Sin favores pendientes"}
+            </div>
+            <div style={{ fontSize:13, color:"var(--text2)", lineHeight:1.6 }}>
+              {q || catF !== "todos"
+                ? "Intenta ajustar los filtros"
+                : "Los favores aparecerán aquí en tiempo real"}
+            </div>
+          </div>
+        ) : filtered.map(f => {
+          const cat   = CATS.find(c => c.id === f.categoria_id);
+          const isAcp = acpId === f.id;
+          const limiteStr = f.hora_inicio
+            ? `Hoy a las ${f.hora_inicio.slice(0,5)}`
+            : f.fecha_limite
+              ? new Date(f.fecha_limite).toLocaleDateString("es-CO", { month:"short", day:"numeric" })
+              : null;
+          return (
+            <div key={f.id} className="card mb2" style={{
+              borderColor: isAcp ? "rgba(196,160,80,0.35)" : "var(--border)",
+              transition:"border-color .2s",
+            }}>
+              {/* Categoría + tiempo */}
+              <div className="row between mb2">
+                <div className="row g1" style={{ alignItems:"center" }}>
+                  <span style={{ fontSize:15 }}>{f.categorias?.icon || "⚡"}</span>
+                  <span style={{ fontSize:11, fontWeight:600, textTransform:"uppercase", letterSpacing:0.4,
+                    color: cat?.color || "var(--accent)" }}>
+                    {f.categorias?.nombre || "—"}
+                  </span>
+                </div>
+                <span style={{ fontSize:11, color:"var(--text3)" }}>{fmtAgo(f.created_at)}</span>
+              </div>
+              {/* Descripción */}
+              <div style={{
+                fontSize:14, color:"var(--text)", lineHeight:1.55, marginBottom:14,
+                display:"-webkit-box", WebkitLineClamp:3, WebkitBoxOrient:"vertical", overflow:"hidden",
+              }}>{f.descripcion}</div>
+              {/* Cliente + precio */}
+              <div className="row between">
+                <div className="row g2">
+                  <div className="av av-s">{f.cliente?.nombre?.[0]?.toUpperCase() || "?"}</div>
+                  <div>
+                    <div style={{ fontSize:12, fontWeight:600, color:"var(--text)" }}>{f.cliente?.nombre || "Estudiante"}</div>
+                    <div style={{ fontSize:10, color:"var(--text3)" }}>
+                      {f.cliente?.carrera || ""}
+                      {f.cliente?.rating_prom ? ` · ★ ${Number(f.cliente.rating_prom).toFixed(1)}` : ""}
+                    </div>
+                  </div>
+                </div>
+                <div style={{ textAlign:"right" }}>
+                  <div style={{ fontSize:15, fontWeight:700, color:"var(--accent)" }}>{fmt(f.precio_oferta)}</div>
+                  {limiteStr && <div style={{ fontSize:10, color:"var(--text3)", marginTop:2 }}>{limiteStr}</div>}
+                </div>
+              </div>
+              {/* Botón aceptar (solo prestadores) */}
+              {esPrest && (
+                <button className="btn btn-p" disabled={!!acpId} onClick={async () => {
+                  setAcpId(f.id);
+                  try { await onAceptar(f.id, f.cliente_id, f.precio_oferta); }
+                  catch { /* toast handled by parent */ }
+                  finally { setAcpId(null); }
+                }} style={{ marginTop:12, padding:"10px", fontSize:13, opacity: acpId && !isAcp ? 0.4 : 1 }}>
+                  {isAcp ? "Aceptando…" : `Aceptar · ${fmt(f.precio_oferta)}`}
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function Wallet() {
   return (
     <div className="screen">
@@ -2391,6 +2537,7 @@ export default function FavoApp() {
   const handleNav = id => {
     setNav(id);
     if (id === "home")    { setScreen("home");    setCat(null); setUser(null); }
+    if (id === "explore") setScreen("explore");
     if (id === "wallet")  setScreen("wallet");
     if (id === "notifs")  setScreen("notifs");
     if (id === "profile") setScreen("profile");
@@ -2624,6 +2771,17 @@ export default function FavoApp() {
               if (favorActual?.id && selUser?.id)
                 await calificar({ favorId: favorActual.id, calificadoId: selUser.id, estrellas, resena });
             }} />}
+          {screen==="explore"    && <Explorar
+            usuario={usuario}
+            onAceptar={async (favorId, clienteId, precio) => {
+              try {
+                await aceptarFavor(favorId, clienteId, usuario.id, precio);
+                notificarTomado(favorId).catch(() => {});
+                setPrestadorFavorId(favorId);
+                toast_('¡Favor aceptado!');
+              } catch (err) { toast_(err.message); throw err; }
+            }}
+          />}
           {screen==="wallet"     && <Wallet />}
           {screen==="notifs"     && <Notifs onIncoming={() => setSolicitud({ id:'demo', cliente_id:'demo', descripcion:INCOMING.desc, precio_oferta:INCOMING.price, categoria_nombre:INCOMING.cat, hora_inicio:'15:00', cliente:{ nombre:INCOMING.user, carrera:INCOMING.career, rating_prom:4.7 } })} />}
           {screen==="profile"    && <Profile

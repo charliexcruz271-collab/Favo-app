@@ -163,6 +163,10 @@ create policy "Ver favores propios" on public.favores
     auth.uid() = cliente_id or auth.uid() = prestador_id
   );
 
+-- Favores: cualquier usuario autenticado puede ver favores pendientes (Explorar)
+create policy "Ver favores pendientes" on public.favores
+  for select using (estado = 'pendiente');
+
 create policy "Crear favor" on public.favores
   for insert with check (auth.uid() = cliente_id);
 

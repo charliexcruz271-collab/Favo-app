@@ -385,6 +385,57 @@ export function useChat(favorId) {
   return { mensajes, enviarMensaje };
 }
 
+// ── EXPLORAR ──────────────────────────────────────────────────────────────
+
+export function useExplorar() {
+  const [favores, setFavores] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const SEL = '*, categorias(id,nombre,icon), cliente:cliente_id(id,nombre,carrera,rating_prom)';
+
+  const cargar = async () => {
+    setLoading(true);
+    const { data } = await supabase
+      .from('favores')
+      .select(SEL)
+      .eq('estado', 'pendiente')
+      .order('created_at', { ascending: false });
+    setFavores(data || []);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    cargar();
+
+    // Nuevo favor publicado → fetch con joins y prepend
+    const chPG = supabase
+      .channel('explorar-pg')
+      .on('postgres_changes', {
+        event: 'INSERT', schema: 'public', table: 'favores',
+      }, async ({ new: row }) => {
+        if (row.estado !== 'pendiente') return;
+        const { data } = await supabase.from('favores').select(SEL).eq('id', row.id).single();
+        if (data) setFavores(prev => [data, ...prev.filter(f => f.id !== data.id)]);
+      })
+      .subscribe();
+
+    // Favor tomado → eliminar de lista (mismo canal que notificarTomado)
+    const chBC = supabase
+      .channel('favo-status')
+      .on('broadcast', { event: 'favor-tomado' }, ({ payload }) => {
+        setFavores(prev => prev.filter(f => f.id !== payload.id));
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(chPG);
+      supabase.removeChannel(chBC);
+    };
+  }, []);
+
+  return { favores, loading, recargar: cargar };
+}
+
 // ── CALIFICACIONES ────────────────────────────────────────────────────────
 
 export function useCalificaciones() {
