@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from "react";
-import { useAuth, useFavores, useRealtimeFavores, useChat, useCalificaciones, useUsuariosCercanos, useWebRTC, useUbicacionRealtime, useExplorar } from "../hooks/useFavoNew";
+import { useAuth, useFavores, useRealtimeFavores, useChat, useCalificaciones, useUsuariosCercanos, useWebRTC, useUbicacionRealtime, useExplorar, useWallet, useNotificaciones } from "../hooks/useFavoNew";
 import { supabase } from "../lib/supabase";
 
 // ─── GLOBAL STYLES ────────────────────────────────────────────────────────────
@@ -610,6 +610,15 @@ const fmtDist = m => m < 1000 ? `${Math.round(m)}m` : `${(m/1000).toFixed(1)}km`
 
 // ─── STATUS BAR ───────────────────────────────────────────────────────────────
 function SB() {
+  const [hora, setHora] = useState(() =>
+    new Date().toLocaleTimeString([], { hour:"2-digit", minute:"2-digit", hour12:false })
+  );
+  useEffect(() => {
+    const t = setInterval(() =>
+      setHora(new Date().toLocaleTimeString([], { hour:"2-digit", minute:"2-digit", hour12:false }))
+    , 10000);
+    return () => clearInterval(t);
+  }, []);
   return (
     <div style={{
       height:52, display:"flex", alignItems:"flex-end", justifyContent:"space-between",
@@ -619,7 +628,7 @@ function SB() {
         position:"absolute", top:10, left:"50%", transform:"translateX(-50%)",
         width:120, height:32, background:"#000", borderRadius:"18px", zIndex:10,
       }} />
-      <span style={{ fontSize:14, fontWeight:600, color:"var(--text)", fontFamily:"var(--font)" }}>9:41</span>
+      <span style={{ fontSize:14, fontWeight:600, color:"var(--text)", fontFamily:"var(--font)" }}>{hora}</span>
       <span style={{ width:120 }} />
       <span style={{ fontSize:11, fontWeight:600, color:"var(--text2)", fontFamily:"var(--font)" }}>
         ●●● ▮
@@ -1031,8 +1040,10 @@ function RegHabilidades({ userInfo, onNext }) {
 // ─── HOME ─────────────────────────────────────────────────────────────────────
 function Home({ onCat, onProfile, prov, onTogProv, onIncoming, ui, favores }) {
   const esPrest = ui?.tipo === "prestador" || ui?.tipo === "ambos";
-  const nombre  = ui?.nombre?.split(" ")[0] || "Alejandro";
+  const nombre  = ui?.nombre?.split(" ")[0] || "Hola";
   const prog    = ui?.posgrado ? ui.posgrado : (ui?.carrera || "Uniandes");
+  const hr      = new Date().getHours();
+  const saludo  = hr < 12 ? "BUENOS DÍAS" : hr < 18 ? "BUENAS TARDES" : "BUENAS NOCHES";
 
   return (
     <div className="screen">
@@ -1045,7 +1056,7 @@ function Home({ onCat, onProfile, prov, onTogProv, onIncoming, ui, favores }) {
         <img src="/logo.png" alt="Favo" style={{ width:24, height:"auto", opacity:0.85 }} />
           <div>
             <div style={{ fontSize:12, color:"var(--text3)", fontWeight:500, marginBottom:3, letterSpacing:0.3 }}>
-              BUENOS DÍAS
+              {saludo}
             </div>
             <div style={{ fontSize:22, fontWeight:700, letterSpacing:"-0.5px", color:"var(--text)" }}>
               {nombre}<span style={{ color:"var(--accent)" }}>.</span>
@@ -2112,7 +2123,18 @@ function Explorar({ usuario, onAceptar }) {
   );
 }
 
-function Wallet() {
+function Wallet({ usuario }) {
+  const { saldo, historial, loading } = useWallet(usuario?.id);
+
+  const catIco = nombre => {
+    const m = { Académico:<IcoBook size={16}/>, Diseño:<IcoPen size={16}/>, Tech:<IcoCode size={16}/>, Mandados:<IcoRoute size={16}/>, Habilidades:<IcoBolt size={16}/> };
+    return m[nombre] || <IcoWallet size={16}/>;
+  };
+  const fmtFecha = iso => {
+    try { return new Date(iso).toLocaleDateString("es-CO", { month:"short", day:"numeric" }); }
+    catch { return ""; }
+  };
+
   return (
     <div className="screen">
       <div style={{ padding:"14px 20px 16px", borderBottom:"1px solid var(--border)" }}>
@@ -2123,10 +2145,10 @@ function Wallet() {
       <div className="px" style={{ paddingTop:16 }}>
         <div className="w-hero mb3">
           <div style={{ fontSize:11, fontWeight:500, color:"rgba(245,158,11,0.70)", letterSpacing:0.8, textTransform:"uppercase", marginBottom:6 }}>
-            Saldo disponible
+            Ganancias liberadas
           </div>
           <div style={{ fontSize:42, fontWeight:700, color:"var(--text)", lineHeight:1, marginBottom:20, letterSpacing:"-2px" }}>
-            $127.500
+            {loading ? "—" : fmt(saldo)}
           </div>
           <div style={{ display:"flex", gap:10 }}>
             {["Retirar","Recargar"].map(a => (
@@ -2139,47 +2161,62 @@ function Wallet() {
             ))}
           </div>
         </div>
-        <div className="t-label mb2">Método de pago</div>
-        <div className="card mb3 row g2">
-          <IcoPhone size={18} color="var(--text2)" />
-          <div className="flex1">
-            <div style={{ fontSize:14, fontWeight:600, color:"var(--text)" }}>Nequi</div>
-            <div style={{ fontSize:12, color:"var(--text2)" }}>+57 310 *** 4521</div>
+        <div className="t-label mb2">Historial de transacciones</div>
+        {loading ? (
+          <div style={{ textAlign:"center", padding:"28px 0", color:"var(--text3)", fontSize:13 }}>Cargando…</div>
+        ) : historial.length === 0 ? (
+          <div className="card" style={{ textAlign:"center", padding:28 }}>
+            <div style={{ fontSize:14, fontWeight:600, color:"var(--text)", marginBottom:6 }}>Sin transacciones aún</div>
+            <div style={{ fontSize:12, color:"var(--text2)" }}>Tus pagos y cobros aparecerán aquí</div>
           </div>
-          <div className="tag tag-g">Principal</div>
-        </div>
-        <div className="t-label mb2">Historial</div>
-        {[
-          { icon:<IcoBook size={16}/>,  desc:"Tutoría Cálculo", tipo:"Pagado",   a:-25000, c:"var(--err)"   },
-          { icon:<IcoCode size={16}/>,  desc:"Ayuda Python",    tipo:"Pagado",   a:-40000, c:"var(--err)"   },
-          { icon:<IcoBox size={16}/>,   desc:"Préstamo calc.",  tipo:"Recibido", a:+8000,  c:"var(--green)" },
-          { icon:<IcoPen size={16}/>,   desc:"Diseño poster",   tipo:"Recibido", a:+35000, c:"var(--green)" },
-        ].map((h, i) => (
-          <div key={i} className="card mb1 row g2">
-            <div style={{ width:38, height:38, borderRadius:"var(--r-sm)", background:"var(--surface2)", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, color:"var(--text2)" }}>
-              {h.icon}
+        ) : historial.map(t => {
+          const esReceptor = t.receptor_id === usuario?.id;
+          const monto = esReceptor ? t.monto_neto : t.monto_total;
+          const catNombre = t.favor?.categorias?.nombre;
+          const desc = (t.favor?.descripcion || "").slice(0, 45) || "Transacción";
+          const pendiente = t.estado === 'retenido';
+          return (
+            <div key={t.id} className="card mb1 row g2">
+              <div style={{ width:38, height:38, borderRadius:"var(--r-sm)", background:"var(--surface2)", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, color:"var(--text2)" }}>
+                {catIco(catNombre)}
+              </div>
+              <div className="flex1">
+                <div style={{ fontSize:13, fontWeight:600, color:"var(--text)", marginBottom:2 }}>
+                  {desc}{desc.length >= 45 ? "…" : ""}
+                </div>
+                <div style={{ fontSize:11, color:"var(--text3)" }}>
+                  {esReceptor ? "Cobrado" : "Pagado"}{pendiente ? " · Retenido" : ""} · {fmtFecha(t.created_at)}
+                </div>
+              </div>
+              <div style={{ fontSize:13, fontWeight:700, color: esReceptor ? "var(--green)" : "var(--err)" }}>
+                {esReceptor ? "+" : "-"}{fmt(monto || 0)}
+              </div>
             </div>
-            <div className="flex1">
-              <div style={{ fontSize:14, fontWeight:600, color:"var(--text)", marginBottom:2 }}>{h.desc}</div>
-              <div style={{ fontSize:11, color:"var(--text3)" }}>{h.tipo}</div>
-            </div>
-            <div style={{ fontSize:14, fontWeight:700, color:h.c }}>{h.a>0?"+":""}{fmt(Math.abs(h.a))}</div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
 }
 
 // ─── NOTIFS ───────────────────────────────────────────────────────────────────
-function Notifs({ onIncoming }) {
-  const items = [
-    { icon:<IcoCheck size={16}/>, title:"Favor completado",  desc:"Sebastián marcó el favor como completado", time:"5 min",  c:"var(--green)", tap:null },
-    { icon:<IcoWallet size={16}/>,title:"Pago recibido",     desc:"Recibiste $35.000 por diseño de poster",   time:"1h",    c:"var(--amber)", tap:null },
-    { icon:<IcoBell size={16}/>,  title:"Nueva solicitud",   desc:"Laura M. busca ayuda en Académico · 80m",  time:"2h",    c:"var(--accent)",tap:onIncoming },
-    { icon:<IcoChat size={16}/>,  title:"Contraoferta",      desc:"Valentina propone $30.000 por tu favor",   time:"3h",    c:"var(--blue)",  tap:null },
-    { icon:<IcoStar size={16}/>,  title:"Nueva reseña",      desc:"Diego te dejó 5 estrellas",                time:"Ayer",  c:"var(--amber)", tap:null },
-  ];
+function Notifs({ usuario }) {
+  const { items, loading } = useNotificaciones(usuario?.id);
+
+  const fmtAgoN = iso => {
+    const s = Math.floor((Date.now() - new Date(iso)) / 1000);
+    if (s < 60)    return "Ahora";
+    if (s < 3600)  return `${Math.floor(s/60)} min`;
+    if (s < 86400) return `${Math.floor(s/3600)} h`;
+    return `${Math.floor(s/86400)} d`;
+  };
+  const tipoMeta = tipo => {
+    if (tipo === 'pago')       return { ico:<IcoWallet size={16}/>, c:"var(--amber)"  };
+    if (tipo === 'rating')     return { ico:<IcoStar   size={16}/>, c:"var(--accent)" };
+    if (tipo === 'completado') return { ico:<IcoCheck  size={16}/>, c:"var(--green)"  };
+    return                            { ico:<IcoBell   size={16}/>, c:"var(--text2)"  };
+  };
+
   return (
     <div className="screen">
       <div style={{ padding:"14px 20px 16px", borderBottom:"1px solid var(--border)" }}>
@@ -2188,25 +2225,34 @@ function Notifs({ onIncoming }) {
         </div>
       </div>
       <div className="px" style={{ paddingTop:14 }}>
-        {items.map((n, i) => (
-          <div key={i} className="ncard" onClick={n.tap}>
-            <div className="ncard-bar" style={{ background:n.c }} />
-            <div style={{ display:"flex", gap:12, alignItems:"flex-start", paddingLeft:12 }}>
-              <div style={{
-                width:34, height:34, borderRadius:"var(--r-sm)", background:"var(--surface2)",
-                display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0,
-                color:"var(--text2)",
-              }}>{n.icon}</div>
-              <div className="flex1">
-                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:3 }}>
-                  <div style={{ fontSize:13, fontWeight:600, color:"var(--text)" }}>{n.title}</div>
-                  <div style={{ fontSize:11, color:"var(--text3)" }}>{n.time}</div>
+        {loading ? (
+          <div style={{ textAlign:"center", padding:"32px 0", color:"var(--text3)", fontSize:13 }}>Cargando…</div>
+        ) : items.length === 0 ? (
+          <div className="card" style={{ textAlign:"center", padding:32 }}>
+            <div style={{ fontSize:14, fontWeight:600, color:"var(--text)", marginBottom:6 }}>Sin alertas aún</div>
+            <div style={{ fontSize:12, color:"var(--text2)" }}>Aquí verás pagos, reseñas y favores completados</div>
+          </div>
+        ) : items.map(n => {
+          const { ico, c } = tipoMeta(n.tipo);
+          return (
+            <div key={n.id} className="ncard">
+              <div className="ncard-bar" style={{ background:c }} />
+              <div style={{ display:"flex", gap:12, alignItems:"flex-start", paddingLeft:12 }}>
+                <div style={{
+                  width:34, height:34, borderRadius:"var(--r-sm)", background:"var(--surface2)",
+                  display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, color:"var(--text2)",
+                }}>{ico}</div>
+                <div className="flex1">
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:3 }}>
+                    <div style={{ fontSize:13, fontWeight:600, color:"var(--text)" }}>{n.title}</div>
+                    <div style={{ fontSize:11, color:"var(--text3)" }}>{fmtAgoN(n.time)}</div>
+                  </div>
+                  <div style={{ fontSize:12, color:"var(--text2)", lineHeight:1.5 }}>{n.desc}</div>
                 </div>
-                <div style={{ fontSize:12, color:"var(--text2)", lineHeight:1.5 }}>{n.desc}</div>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -2361,18 +2407,18 @@ function Profile({ onBack, prov, onTogProv, ui, favores }) {
               </div>
             ))}
           </div>
-          <div className="t-label mb2">Categorías activas</div>
-          {[{ icon:<IcoBook size={16}/>, name:"Académico", range:"$15k — $35k" },
-            { icon:<IcoCode size={16}/>, name:"Tech",      range:"$20k — $70k" }].map((c, i) => (
-            <div key={i} className="card mb2 row g2">
-              <div style={{ width:36, height:36, borderRadius:"var(--r-sm)", background:"var(--surface2)", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, color:"var(--text2)" }}>{c.icon}</div>
-              <div className="flex1">
-                <div style={{ fontSize:13, fontWeight:600, color:"var(--text)" }}>{c.name}</div>
-                <div style={{ fontSize:11, color:"var(--text2)" }}>{c.range}</div>
-              </div>
-              <div className="tag tag-g">Activo</div>
+          <div className="t-label mb2">Información</div>
+          <div className="card mb2">
+            <div className="row between">
+              <span style={{ fontSize:13, color:"var(--text3)" }}>Total favores</span>
+              <span style={{ fontSize:13, fontWeight:600, color:"var(--text)" }}>{ui?.total_favores ?? 0}</span>
             </div>
-          ))}
+            <div className="hr" />
+            <div className="row between">
+              <span style={{ fontSize:13, color:"var(--text3)" }}>Rating promedio</span>
+              <span style={{ fontSize:13, fontWeight:600, color:"var(--accent)" }}>★ {ui?.rating_prom != null ? Number(ui.rating_prom).toFixed(1) : "5.0"}</span>
+            </div>
+          </div>
         </div>
       )}
 
@@ -2782,8 +2828,8 @@ export default function FavoApp() {
               } catch (err) { toast_(err.message); throw err; }
             }}
           />}
-          {screen==="wallet"     && <Wallet />}
-          {screen==="notifs"     && <Notifs onIncoming={() => setSolicitud({ id:'demo', cliente_id:'demo', descripcion:INCOMING.desc, precio_oferta:INCOMING.price, categoria_nombre:INCOMING.cat, hora_inicio:'15:00', cliente:{ nombre:INCOMING.user, carrera:INCOMING.career, rating_prom:4.7 } })} />}
+          {screen==="wallet"     && <Wallet usuario={usuario} />}
+          {screen==="notifs"     && <Notifs usuario={usuario} />}
           {screen==="profile"    && <Profile
             onBack={() => { setScreen("home"); setNav("home"); }}
             prov={prov} onTogProv={() => setProv(p => !p)} ui={ui} favores={favores} />}

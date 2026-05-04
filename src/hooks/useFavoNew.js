@@ -436,6 +436,89 @@ export function useExplorar() {
   return { favores, loading, recargar: cargar };
 }
 
+// ── WALLET ────────────────────────────────────────────────────────────────
+
+export function useWallet(userId) {
+  const [saldo, setSaldo]       = useState(0);
+  const [historial, setHistorial] = useState([]);
+  const [loading, setLoading]   = useState(true);
+
+  useEffect(() => {
+    if (!userId) return;
+    (async () => {
+      const TX_SEL = 'id, favor_id, pagador_id, receptor_id, monto_total, monto_neto, estado, created_at, favor:favor_id(descripcion, categorias(nombre,icon))';
+      const { data } = await supabase
+        .from('transacciones')
+        .select(TX_SEL)
+        .or(`pagador_id.eq.${userId},receptor_id.eq.${userId}`)
+        .order('created_at', { ascending: false });
+      if (data) {
+        setHistorial(data);
+        const ganado = data
+          .filter(t => t.receptor_id === userId && t.estado === 'liberado')
+          .reduce((s, t) => s + (t.monto_neto || 0), 0);
+        setSaldo(ganado);
+      }
+      setLoading(false);
+    })();
+  }, [userId]);
+
+  return { saldo, historial, loading };
+}
+
+// ── NOTIFICACIONES ────────────────────────────────────────────────────────
+
+export function useNotificaciones(userId) {
+  const [items, setItems]     = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!userId) return;
+    (async () => {
+      const [{ data: txs }, { data: cals }, { data: favs }] = await Promise.all([
+        supabase.from('transacciones')
+          .select('id, receptor_id, monto_neto, estado, created_at, favor:favor_id(descripcion)')
+          .or(`pagador_id.eq.${userId},receptor_id.eq.${userId}`)
+          .order('created_at', { ascending: false }).limit(15),
+        supabase.from('calificaciones')
+          .select('id, estrellas, resena, created_at, calificador:calificador_id(nombre)')
+          .eq('calificado_id', userId)
+          .order('created_at', { ascending: false }).limit(10),
+        supabase.from('favores')
+          .select('id, descripcion, estado, created_at, categorias(nombre)')
+          .or(`cliente_id.eq.${userId},prestador_id.eq.${userId}`)
+          .eq('estado', 'completado')
+          .order('created_at', { ascending: false }).limit(10),
+      ]);
+
+      const notifs = [];
+      (txs || []).forEach(t => {
+        if (t.receptor_id === userId && t.estado === 'liberado')
+          notifs.push({ id:`tx-${t.id}`, tipo:'pago', time:t.created_at,
+            title:'Pago recibido',
+            desc:`Recibiste $${Number(t.monto_neto).toLocaleString('es-CO')} por "${(t.favor?.descripcion||'favor').slice(0,45)}"` });
+      });
+      (cals || []).forEach(c =>
+        notifs.push({ id:`cal-${c.id}`, tipo:'rating', time:c.created_at,
+          title:'Nueva reseña',
+          desc:`${c.calificador?.nombre||'Alguien'} te dejó ${c.estrellas}★${c.resena?` — "${c.resena.slice(0,40)}"`:''}`
+        })
+      );
+      (favs || []).forEach(f =>
+        notifs.push({ id:`fav-${f.id}`, tipo:'completado', time:f.created_at,
+          title:'Favor completado',
+          desc:`${f.categorias?.nombre||'Favor'}: "${(f.descripcion||'').slice(0,50)}"`
+        })
+      );
+      notifs.sort((a, b) => new Date(b.time) - new Date(a.time));
+      setItems(notifs);
+      setLoading(false);
+    })();
+  }, [userId]);
+
+  return { items, loading };
+}
+
 // ── CALIFICACIONES ────────────────────────────────────────────────────────
 
 export function useCalificaciones() {
