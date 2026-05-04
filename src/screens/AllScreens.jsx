@@ -2108,7 +2108,7 @@ function Explorar({ usuario, onAceptar }) {
               {esPrest && (
                 <button className="btn btn-p" disabled={!!acpId} onClick={async () => {
                   setAcpId(f.id);
-                  try { await onAceptar(f.id, f.cliente_id, f.precio_oferta); }
+                  try { await onAceptar(f.id, f.cliente_id, f.precio_oferta, f.cliente); }
                   catch { /* toast handled by parent */ }
                   finally { setAcpId(null); }
                 }} style={{ marginTop:12, padding:"10px", fontSize:13, opacity: acpId && !isAcp ? 0.4 : 1 }}>
@@ -2613,9 +2613,13 @@ export default function FavoApp() {
                   catch (err) { toast_(err.message); return; }
                   notificarTomado(favorId).catch(() => {});
                   setPrestadorFavorId(favorId);
+                  const cli = solicitudEntrante.cliente;
+                  setUser({ id: clienteId, name: cli?.nombre || 'Cliente', carrera: cli?.carrera || '', rating: cli?.rating_prom || 5 });
+                  setChatFrom("home");
                 }
                 setSolicitud(null);
                 toast_('¡Favor aceptado!');
+                setScreen("chat");
               }}
               onContraoferta={async (favorId, monto) => {
                 if (favorId !== 'demo') {
@@ -2796,7 +2800,7 @@ export default function FavoApp() {
               } catch (err) { toast_(err.message); }
             }}
             onBack={() => setScreen("category")} onChat={() => setScreen("chat")} cp={counter} />}
-          {screen==="chat"       && selUser && <Chat user={selUser} favorId={favorActual?.id} userId={usuario?.id} onBack={() => setScreen(chatFrom)} />}
+          {screen==="chat"       && selUser && <Chat user={selUser} favorId={activeFavorId} userId={usuario?.id} onBack={() => setScreen(chatFrom)} />}
           {screen==="tracking"   && <Tracking user={selUser} estado={favorStatus}
             prestadorId={selUser?.id}
             clientCoords={userCoords}
@@ -2819,11 +2823,16 @@ export default function FavoApp() {
             }} />}
           {screen==="explore"    && <Explorar
             usuario={usuario}
-            onAceptar={async (favorId, clienteId, precio) => {
+            onAceptar={async (favorId, clienteId, precio, clienteInfo) => {
               try {
                 await aceptarFavor(favorId, clienteId, usuario.id, precio);
                 notificarTomado(favorId).catch(() => {});
                 setPrestadorFavorId(favorId);
+                if (clienteInfo) {
+                  setUser({ id: clienteId, name: clienteInfo.nombre || 'Cliente', carrera: clienteInfo.carrera || '', rating: clienteInfo.rating_prom || 5 });
+                  setChatFrom("explore");
+                  setScreen("chat");
+                }
                 toast_('¡Favor aceptado!');
               } catch (err) { toast_(err.message); throw err; }
             }}

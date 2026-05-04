@@ -341,9 +341,16 @@ export function useUsuariosCercanos() {
 }
 
 // ── CHAT ──────────────────────────────────────────────────────────────────
+// Estrategia dual:
+//   1. Broadcast  → entrega inmediata, sin depender de RLS ni de la
+//      publication de realtime. El remitente envía el mensaje ya
+//      guardado (con id real) por el canal suscrito.
+//   2. postgres_changes → respaldo por si el otro usuario reconecta.
+//      La deduplicación por id evita duplicados.
 
 export function useChat(favorId) {
   const [mensajes, setMensajes] = useState([]);
+  const chRef = useRef(null);
 
   const _addMsg = (msg) =>
     setMensajes(prev => prev.some(m => m.id === msg.id) ? prev : [...prev, msg]);
@@ -352,23 +359,25 @@ export function useChat(favorId) {
     if (!favorId) return;
     setMensajes([]);
 
+    // Carga histórico
     supabase.from('mensajes')
       .select('id, favor_id, remitente, contenido, leido, created_at')
       .eq('favor_id', favorId)
       .order('created_at')
       .then(({ data }) => setMensajes(data || []));
 
-    const channel = supabase
+    // Canal único: broadcast (primario) + postgres_changes (respaldo)
+    const ch = supabase
       .channel(`chat-${favorId}`)
+      .on('broadcast', { event: 'msg' }, ({ payload }) => _addMsg(payload))
       .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'mensajes',
+        event: 'INSERT', schema: 'public', table: 'mensajes',
         filter: `favor_id=eq.${favorId}`,
       }, ({ new: row }) => _addMsg(row))
       .subscribe();
 
-    return () => supabase.removeChannel(channel);
+    chRef.current = ch;
+    return () => { supabase.removeChannel(ch); chRef.current = null; };
   }, [favorId]);
 
   const enviarMensaje = async (contenido) => {
@@ -379,7 +388,10 @@ export function useChat(favorId) {
       contenido,
     }).select('id, favor_id, remitente, contenido, leido, created_at').single();
     if (error) throw error;
+    // Agrega al estado propio inmediatamente
     _addMsg(data);
+    // Entrega al otro usuario por broadcast en el canal ya suscrito
+    chRef.current?.send({ type: 'broadcast', event: 'msg', payload: data }).catch(() => {});
   };
 
   return { mensajes, enviarMensaje };
