@@ -345,32 +345,41 @@ export function useUsuariosCercanos() {
 export function useChat(favorId) {
   const [mensajes, setMensajes] = useState([]);
 
+  const _addMsg = (msg) =>
+    setMensajes(prev => prev.some(m => m.id === msg.id) ? prev : [...prev, msg]);
+
   useEffect(() => {
     if (!favorId) return;
+    setMensajes([]);
+
     supabase.from('mensajes')
-      .select('id, favor_id, remitente, contenido, leido, created_at, sender:remitente(nombre)')
-      .eq('favor_id', favorId).order('created_at')
+      .select('id, favor_id, remitente, contenido, leido, created_at')
+      .eq('favor_id', favorId)
+      .order('created_at')
       .then(({ data }) => setMensajes(data || []));
 
     const channel = supabase
       .channel(`chat-${favorId}`)
       .on('postgres_changes', {
-        event: 'INSERT', schema: 'public', table: 'mensajes',
+        event: 'INSERT',
+        schema: 'public',
+        table: 'mensajes',
         filter: `favor_id=eq.${favorId}`,
-      }, (payload) => {
-        setMensajes(prev => [...prev, payload.new]);
-      })
+      }, ({ new: row }) => _addMsg(row))
       .subscribe();
 
     return () => supabase.removeChannel(channel);
   }, [favorId]);
 
   const enviarMensaje = async (contenido) => {
-    const user = (await supabase.auth.getUser()).data.user;
-    const { error } = await supabase.from('mensajes').insert({
-      favor_id: favorId, remitente: user.id, contenido,
-    });
+    const { data: { user } } = await supabase.auth.getUser();
+    const { data, error } = await supabase.from('mensajes').insert({
+      favor_id: favorId,
+      remitente: user.id,
+      contenido,
+    }).select('id, favor_id, remitente, contenido, leido, created_at').single();
     if (error) throw error;
+    _addMsg(data);
   };
 
   return { mensajes, enviarMensaje };

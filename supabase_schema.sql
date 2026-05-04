@@ -244,3 +244,4 @@ create policy "Insertar transaccion" on public.transacciones
 alter publication supabase_realtime add table public.favores;
 alter publication supabase_realtime add table public.negociaciones;
 alter publication supabase_realtime add table public.ubicaciones;
+alter publication supabase_realtime add table public.mensajes;
