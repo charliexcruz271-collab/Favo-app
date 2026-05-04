@@ -243,3 +243,4 @@ create policy "Insertar transaccion" on public.transacciones
 -- Habilitar realtime para postgres_changes
 alter publication supabase_realtime add table public.favores;
 alter publication supabase_realtime add table public.negociaciones;
+alter publication supabase_realtime add table public.ubicaciones;

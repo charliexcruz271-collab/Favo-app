@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect } from "react";
-import { useAuth, useFavores, useRealtimeFavores, useChat, useCalificaciones, useUsuariosCercanos } from "../hooks/useFavoNew";
+import { useState, useRef, useEffect, useMemo } from "react";
+import { useAuth, useFavores, useRealtimeFavores, useChat, useCalificaciones, useUsuariosCercanos, useWebRTC, useUbicacionRealtime } from "../hooks/useFavoNew";
 import { supabase } from "../lib/supabase";
 
 // ─── GLOBAL STYLES ────────────────────────────────────────────────────────────
@@ -1471,6 +1471,74 @@ function Negotiate({ cat, user, onConfirm, onBack, onChat, cp }) {
   );
 }
 
+// ─── LLAMADA MODAL (entrante) ─────────────────────────────────────────────────
+function LlamadaModal({ de, onResponder, onRechazar }) {
+  return (
+    <div style={{
+      position:"fixed", inset:0, zIndex:200, background:"rgba(0,0,0,0.92)",
+      display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
+    }}>
+      <style>{`@keyframes lmpulse{0%,100%{transform:scale(1);opacity:.5}50%{transform:scale(1.55);opacity:0}}`}</style>
+      <div style={{ position:"relative", marginBottom:28 }}>
+        <div style={{ position:"absolute", inset:-20, borderRadius:"50%", background:"rgba(196,160,80,0.18)", animation:"lmpulse 1.5s ease-out infinite" }} />
+        <div style={{ position:"absolute", inset:-36, borderRadius:"50%", background:"rgba(196,160,80,0.08)", animation:"lmpulse 1.5s ease-out infinite .3s" }} />
+        <div style={{ width:100, height:100, borderRadius:"50%", background:"linear-gradient(135deg,#C4A050,#8A6A28)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:40, fontWeight:700, color:"#fff", position:"relative" }}>
+          {(de?.[0] || "?").toUpperCase()}
+        </div>
+      </div>
+      <div style={{ fontSize:22, fontWeight:700, color:"var(--text)", marginBottom:4 }}>{de || "Llamada entrante"}</div>
+      <div style={{ fontSize:14, color:"var(--text2)", marginBottom:48 }}>Llamada de audio</div>
+      <div style={{ display:"flex", gap:40 }}>
+        <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:8 }}>
+          <button onClick={onRechazar} style={{ width:68, height:68, borderRadius:"50%", background:"#FF4D4D", border:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ transform:"rotate(135deg)" }}><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.6 21 3 13.4 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/></svg>
+          </button>
+          <span style={{ fontSize:12, color:"var(--text2)" }}>Rechazar</span>
+        </div>
+        <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:8 }}>
+          <button onClick={onResponder} style={{ width:68, height:68, borderRadius:"50%", background:"#22C55E", border:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>
+            <IcoPhone size={26} color="#fff" />
+          </button>
+          <span style={{ fontSize:12, color:"var(--text2)" }}>Responder</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── LLAMADA ACTIVA (banner) ───────────────────────────────────────────────────
+function LlamadaActiva({ nombre, muteo, duracion, onMute, onColgar }) {
+  const mm = String(Math.floor(duracion / 60)).padStart(2, "0");
+  const ss = String(duracion % 60).padStart(2, "0");
+  return (
+    <div style={{
+      position:"fixed", top:0, left:"50%", transform:"translateX(-50%)",
+      width:393, maxWidth:"100vw", zIndex:150,
+      background:"#0B2B0B", borderBottom:"1px solid rgba(34,197,94,0.25)",
+      padding:"10px 16px", display:"flex", alignItems:"center", gap:12,
+    }}>
+      <div style={{ width:34, height:34, borderRadius:"50%", background:"rgba(34,197,94,0.18)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, fontWeight:700, color:"#22C55E", flexShrink:0 }}>
+        {(nombre?.[0] || "?").toUpperCase()}
+      </div>
+      <div style={{ flex:1 }}>
+        <div style={{ fontSize:13, fontWeight:600, color:"#fff" }}>{nombre || "Llamada"}</div>
+        <div style={{ fontSize:11, color:"rgba(255,255,255,0.55)" }}>{mm}:{ss}</div>
+      </div>
+      <button onClick={onMute} title={muteo ? "Activar mic" : "Silenciar"} style={{ width:36, height:36, borderRadius:"50%", background: muteo ? "rgba(255,77,77,0.30)" : "rgba(255,255,255,0.10)", border:`1px solid ${muteo ? "rgba(255,77,77,0.5)" : "rgba(255,255,255,0.15)"}`, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={muteo ? "#FF4D4D" : "#fff"} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          {muteo
+            ? <><line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 005.12 2.12M15 9.34V4a3 3 0 00-5.94-.6"/><path d="M17 16.95A7 7 0 015 12v-2m14 0v2a7 7 0 01-.11 1.23"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></>
+            : <><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></>
+          }
+        </svg>
+      </button>
+      <button onClick={onColgar} title="Colgar" style={{ width:36, height:36, borderRadius:"50%", background:"#FF4D4D", border:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ transform:"rotate(135deg)" }}><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.6 21 3 13.4 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/></svg>
+      </button>
+    </div>
+  );
+}
+
 // ─── CONTRAOFERTA MODAL (cliente) ─────────────────────────────────────────────
 function ContraofertaModal({ neg, onAceptar, onRechazar }) {
   const ini = neg.prestador_nombre[0]?.toUpperCase() || "?";
@@ -1616,10 +1684,15 @@ function Chat({ user, favorId, userId, onBack }) {
   }, [mensajes]);
 
   const send = async () => {
-    const text = inp.trim();
-    if (!text) return;
+    const t = inp.trim();
+    if (!t) return;
     setInp("");
-    try { await enviarMensaje(text); } catch {}
+    try { await enviarMensaje(t); } catch {}
+  };
+
+  const fmtT = iso => {
+    try { return new Date(iso).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' }); }
+    catch { return ''; }
   };
 
   return (
@@ -1627,21 +1700,52 @@ function Chat({ user, favorId, userId, onBack }) {
       <div style={{ padding:"12px 20px 14px", borderBottom:"1px solid var(--border)", background:"var(--bg)", flexShrink:0 }}>
         <div className="row g2">
           <button className="back" onClick={onBack}><IcoBack size={18} color="var(--text2)" /></button>
-          <div className="av av-s">{user.av}</div>
+          <div className="av av-s">{user?.av || "?"}</div>
           <div className="flex1">
-            <div style={{ fontSize:14, fontWeight:600, color:"var(--text)" }}>{user.name}</div>
+            <div style={{ fontSize:14, fontWeight:600, color:"var(--text)" }}>{user?.name || "Chat"}</div>
             <div style={{ fontSize:11, color:"var(--green)", fontWeight:500 }}>En línea</div>
           </div>
-          <IcoPin size={20} color="var(--text3)" />
         </div>
       </div>
-      <div style={{ flex:1, overflowY:"auto", padding:"14px 20px", display:"flex", flexDirection:"column", gap:2 }}>
+      <div style={{ flex:1, overflowY:"auto", padding:"14px 20px", display:"flex", flexDirection:"column" }}>
         {mensajes.length === 0 && (
-          <div style={{ textAlign:"center", color:"var(--text3)", fontSize:13, paddingTop:32 }}>Inicia la conversación</div>
+          <div style={{ textAlign:"center", color:"var(--text3)", fontSize:13, paddingTop:40 }}>
+            Inicia la conversación
+          </div>
         )}
         {mensajes.map((m, i) => {
           const esMe = m.remitente === userId;
-          return <div key={m.id || i} className={`bbl ${esMe ? "bme" : "bth"}`}>{m.contenido}</div>;
+          const prev = mensajes[i - 1];
+          const nuevoGrupo = !prev || prev.remitente !== m.remitente;
+          return (
+            <div key={m.id || i} style={{
+              display:"flex", flexDirection:"column",
+              alignItems: esMe ? "flex-end" : "flex-start",
+              marginTop: nuevoGrupo && i > 0 ? 12 : 2,
+            }}>
+              {!esMe && nuevoGrupo && (
+                <div style={{ display:"flex", alignItems:"center", gap:5, marginBottom:4 }}>
+                  <div style={{
+                    width:20, height:20, borderRadius:"50%",
+                    background:"linear-gradient(135deg,#C4A050,#8A6A28)",
+                    display:"flex", alignItems:"center", justifyContent:"center",
+                    fontSize:9, fontWeight:700, color:"#fff", flexShrink:0,
+                  }}>
+                    {(user?.av || "?")[0]}
+                  </div>
+                  <span style={{ fontSize:11, fontWeight:600, color:"var(--text3)" }}>
+                    {user?.name || "Prestador"}
+                  </span>
+                </div>
+              )}
+              <div className={`bbl ${esMe ? "bme" : "bth"}`} style={{ maxWidth:"76%" }}>
+                {m.contenido}
+              </div>
+              <div style={{ fontSize:10, color:"var(--text3)", marginTop:2, paddingLeft:2, paddingRight:2 }}>
+                {fmtT(m.created_at)}
+              </div>
+            </div>
+          );
         })}
         <div ref={bot} />
       </div>
@@ -1662,8 +1766,34 @@ function Chat({ user, favorId, userId, onBack }) {
 }
 
 // ─── TRACKING ─────────────────────────────────────────────────────────────────
-function Tracking({ user, onBack, estado }) {
+function haversineM(lat1, lng1, lat2, lng2) {
+  const R = 6371e3, p1 = lat1*Math.PI/180, p2 = lat2*Math.PI/180;
+  const dp = (lat2-lat1)*Math.PI/180, dl = (lng2-lng1)*Math.PI/180;
+  return Math.round(2*R*Math.asin(Math.sqrt(Math.sin(dp/2)**2+Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)**2)));
+}
+
+function Tracking({ user, onBack, estado, prestadorId, clientCoords, onChat, onLlamar }) {
   const aceptado = (estado === 'aceptado' || estado === 'en_curso') && !!user;
+  const [prestCoords, setPrestCoords] = useState(null);
+  useUbicacionRealtime(aceptado ? prestadorId : null, ub => {
+    if (ub.activo) setPrestCoords({ lat: ub.lat, lng: ub.lng });
+  });
+
+  const dotPos = useMemo(() => {
+    if (!prestCoords || !clientCoords) return { top:"30%", left:"62%" };
+    const dlat = (prestCoords.lat - clientCoords.lat) * 1000;
+    const dlng = (prestCoords.lng - clientCoords.lng) * 1000;
+    const top  = Math.max(5, Math.min(90, 45 - dlat * 5));
+    const left = Math.max(5, Math.min(90, 48 + dlng * 5));
+    return { top:`${top.toFixed(0)}%`, left:`${left.toFixed(0)}%` };
+  }, [prestCoords, clientCoords]);
+
+  const distLabel = useMemo(() => {
+    if (!prestCoords || !clientCoords) return "~50m";
+    const d = haversineM(clientCoords.lat, clientCoords.lng, prestCoords.lat, prestCoords.lng);
+    return d < 1000 ? `${d}m` : `${(d/1000).toFixed(1)}km`;
+  }, [prestCoords, clientCoords]);
+
   return (
     <div className="screen px" style={{ paddingTop:16 }}>
       <div className="row g2 mb3">
@@ -1682,9 +1812,7 @@ function Tracking({ user, onBack, estado }) {
           }}>
             <IcoBell size={22} color="var(--accent)" />
           </div>
-          <div style={{ fontSize:15, fontWeight:600, color:"var(--text)", marginBottom:8 }}>
-            Solicitud enviada
-          </div>
+          <div style={{ fontSize:15, fontWeight:600, color:"var(--text)", marginBottom:8 }}>Solicitud enviada</div>
           <div style={{ fontSize:13, color:"var(--text2)", lineHeight:1.6 }}>
             Tu solicitud fue publicada. Un prestador cercano la verá y podrá aceptarla o hacer una contraoferta.
           </div>
@@ -1698,8 +1826,8 @@ function Tracking({ user, onBack, estado }) {
           <div className="mdot" style={{ top:"45%", left:"48%" }} />
           <div style={{
             position:"absolute", width:10, height:10, borderRadius:"50%",
-            background:"var(--blue)", top:"30%", left:"62%",
-            boxShadow:"0 0 0 4px rgba(59,130,246,0.18)",
+            background:"var(--accent)", transition:"top .8s ease, left .8s ease",
+            ...dotPos, boxShadow:"0 0 0 4px rgba(196,160,80,0.20)",
           }} />
           <div style={{
             position:"absolute", bottom:12, left:12,
@@ -1709,7 +1837,7 @@ function Tracking({ user, onBack, estado }) {
           }}>
             <span style={{ width:7, height:7, borderRadius:"50%", background:"var(--accent)", display:"inline-block" }} />
             <span style={{ fontSize:12, fontWeight:600, color:"var(--text)" }}>{user?.name || "Prestador"}</span>
-            <span style={{ fontSize:12, color:"var(--text2)" }}>50m</span>
+            <span style={{ fontSize:12, color:"var(--text2)" }}>{distLabel}</span>
           </div>
           <div style={{
             position:"absolute", top:12, right:12,
@@ -1729,17 +1857,18 @@ function Tracking({ user, onBack, estado }) {
             <div style={{ fontSize:12, color:"var(--text2)" }}>{user?.career || ""}</div>
           </div>
           {aceptado
-            ? <div className="tag tag-g">~3 min</div>
+            ? <div className="tag tag-g">{distLabel}</div>
             : <div className="tag" style={{ background:"var(--acc-dim)", color:"var(--accent)", border:"1px solid rgba(196,160,80,0.20)", borderRadius:"var(--r-pill)", padding:"4px 10px", fontSize:11, fontWeight:600 }}>Pendiente</div>
           }
         </div>
         {aceptado && (
           <div style={{ display:"flex", gap:10 }}>
-            {[[<IcoChat size={16}/>, "Chat"], [<IcoPhone size={16}/>, "Llamar"]].map(([ic, lb]) => (
-              <button key={lb} className="btn btn-o flex1" style={{ padding:"11px", fontSize:13, display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
-                <span style={{ color:"var(--text2)" }}>{ic}</span> {lb}
-              </button>
-            ))}
+            <button className="btn btn-o flex1" onClick={onChat} style={{ padding:"11px", fontSize:13, display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
+              <span style={{ color:"var(--text2)" }}><IcoChat size={16}/></span> Chat
+            </button>
+            <button className="btn btn-o flex1" onClick={onLlamar} style={{ padding:"11px", fontSize:13, display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
+              <span style={{ color:"var(--text2)" }}><IcoPhone size={16}/></span> Llamar
+            </button>
           </div>
         )}
       </div>
@@ -2161,6 +2290,12 @@ export default function FavoApp() {
   const [favores,          setFavores]       = useState([]);
   const [tiempos,          setTiempos]       = useState(null);
   const [userCoords,       setUserCoords]    = useState(null);
+  const [prestadorFavorId, setPrestadorFavorId] = useState(null);
+  const [chatFrom,         setChatFrom]      = useState("tracking");
+  const [callNombre,       setCallNombre]    = useState(null);
+
+  const activeFavorId = favorActual?.id || prestadorFavorId;
+  const { llamadaEntrante, llamadaActiva, muteo, duracion, iniciarLlamada, responderLlamada, rechazarLlamada, colgarLlamada, toggleMute } = useWebRTC(activeFavorId, usuario?.id, usuario?.nombre);
 
   const recargarFavores = () => {
     if (usuario?.id) cargarFavores(usuario.id).then(setFavores).catch(() => {});
@@ -2284,6 +2419,7 @@ export default function FavoApp() {
                   try { await aceptarFavor(favorId, clienteId, usuario.id, precio); }
                   catch (err) { toast_(err.message); return; }
                   notificarTomado(favorId).catch(() => {});
+                  setPrestadorFavorId(favorId);
                 }
                 setSolicitud(null);
                 toast_('¡Favor aceptado!');
@@ -2331,6 +2467,22 @@ export default function FavoApp() {
                 setContraoferta(null);
                 toast_('Contraoferta rechazada. El favor sigue disponible.');
               }}
+            />
+          )}
+          {llamadaEntrante && (
+            <LlamadaModal
+              de={llamadaEntrante.fromName}
+              onResponder={() => { setCallNombre(llamadaEntrante.fromName); responderLlamada(); }}
+              onRechazar={rechazarLlamada}
+            />
+          )}
+          {llamadaActiva && (
+            <LlamadaActiva
+              nombre={callNombre}
+              muteo={muteo}
+              duracion={duracion}
+              onMute={toggleMute}
+              onColgar={colgarLlamada}
             />
           )}
 
@@ -2451,8 +2603,12 @@ export default function FavoApp() {
               } catch (err) { toast_(err.message); }
             }}
             onBack={() => setScreen("category")} onChat={() => setScreen("chat")} cp={counter} />}
-          {screen==="chat"       && selUser && <Chat user={selUser} favorId={favorActual?.id} userId={usuario?.id} onBack={() => setScreen("negotiate")} />}
+          {screen==="chat"       && selUser && <Chat user={selUser} favorId={favorActual?.id} userId={usuario?.id} onBack={() => setScreen(chatFrom)} />}
           {screen==="tracking"   && <Tracking user={selUser} estado={favorStatus}
+            prestadorId={selUser?.id}
+            clientCoords={userCoords}
+            onChat={() => { setChatFrom("tracking"); setScreen("chat"); }}
+            onLlamar={() => { setCallNombre(selUser?.name); iniciarLlamada(selUser?.id); }}
             onBack={async () => {
               if (favorActual?.id) {
                 try { await completarFavor(favorActual.id); } catch (e) {}

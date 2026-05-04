@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 
 // ── AUTH ──────────────────────────────────────────────────────────────────
@@ -347,7 +347,8 @@ export function useChat(favorId) {
 
   useEffect(() => {
     if (!favorId) return;
-    supabase.from('mensajes').select('*, remitente:remitente(nombre)')
+    supabase.from('mensajes')
+      .select('id, favor_id, remitente, contenido, leido, created_at, sender:remitente(nombre)')
       .eq('favor_id', favorId).order('created_at')
       .then(({ data }) => setMensajes(data || []));
 
@@ -423,4 +424,168 @@ export function useObjetos() {
   useEffect(() => { cargarObjetos(); }, []);
 
   return { objetos, publicarObjeto, cargarObjetos };
+}
+
+// ── UBICACIÓN EN TIEMPO REAL ──────────────────────────────────────────────
+
+export function useUbicacionRealtime(usuarioId, callback) {
+  useEffect(() => {
+    if (!usuarioId) return;
+    const ch = supabase
+      .channel(`ubicacion-${usuarioId}`)
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'ubicaciones',
+        filter: `usuario_id=eq.${usuarioId}`,
+      }, ({ new: ub }) => callback({ lat: Number(ub.lat), lng: Number(ub.lng), activo: ub.activo }))
+      .subscribe();
+    return () => supabase.removeChannel(ch);
+  }, [usuarioId]);
+}
+
+// ── WEBRTC (llamadas de voz) ──────────────────────────────────────────────
+
+const ICE_SERVERS = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' },
+];
+
+export function useWebRTC(favorId, miId, miNombre) {
+  const [llamadaEntrante, setLlamadaEntrante] = useState(null);
+  const [llamadaActiva,   setLlamadaActiva]   = useState(false);
+  const [muteo,           setMuteo]           = useState(false);
+  const [duracion,        setDuracion]        = useState(0);
+
+  const pcRef       = useRef(null);
+  const streamRef   = useRef(null);
+  const chRef       = useRef(null);
+  const otroRef     = useRef(null);
+  const offerBuf    = useRef(null);
+  const iceBuf      = useRef([]);
+  const timerRef    = useRef(null);
+
+  useEffect(() => {
+    if (!favorId || !miId) return;
+    const ch = supabase.channel(`call-${favorId}`)
+      .on('broadcast', { event: 'call-ring' }, ({ payload }) => {
+        if (payload.to !== miId) return;
+        otroRef.current = payload.from;
+        setLlamadaEntrante({ from: payload.from, fromName: payload.fromName || 'Usuario' });
+      })
+      .on('broadcast', { event: 'call-offer' }, async ({ payload }) => {
+        if (payload.to !== miId) return;
+        if (pcRef.current) {
+          await pcRef.current.setRemoteDescription(payload.offer).catch(() => {});
+          for (const c of iceBuf.current) await pcRef.current.addIceCandidate(c).catch(() => {});
+          iceBuf.current = [];
+        } else {
+          offerBuf.current = payload.offer;
+        }
+      })
+      .on('broadcast', { event: 'call-answer' }, async ({ payload }) => {
+        if (payload.to !== miId || !pcRef.current) return;
+        await pcRef.current.setRemoteDescription(payload.answer).catch(() => {});
+        for (const c of iceBuf.current) await pcRef.current.addIceCandidate(c).catch(() => {});
+        iceBuf.current = [];
+      })
+      .on('broadcast', { event: 'call-ice' }, async ({ payload }) => {
+        if (payload.to !== miId) return;
+        if (pcRef.current?.remoteDescription) {
+          await pcRef.current.addIceCandidate(payload.candidate).catch(() => {});
+        } else {
+          iceBuf.current.push(payload.candidate);
+        }
+      })
+      .on('broadcast', { event: 'call-end' }, ({ payload }) => {
+        if (payload.to !== miId) return;
+        _colgarLocal();
+      })
+      .subscribe();
+    chRef.current = ch;
+    return () => { supabase.removeChannel(ch); _colgarLocal(); };
+  }, [favorId, miId]);
+
+  const _send = (event, payload) =>
+    chRef.current?.send({ type: 'broadcast', event, payload }).catch(() => {});
+
+  const _crearPC = async (otroId) => {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    streamRef.current = stream;
+    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    stream.getTracks().forEach(t => pc.addTrack(t, stream));
+    pc.onicecandidate = e => {
+      if (e.candidate) _send('call-ice', { from: miId, to: otroId, candidate: e.candidate.toJSON() });
+    };
+    pc.ontrack = e => {
+      const audio = new Audio();
+      audio.srcObject = e.streams[0];
+      audio.autoplay = true;
+      audio.play().catch(() => {});
+    };
+    pc.onconnectionstatechange = () => {
+      if (['disconnected', 'failed', 'closed'].includes(pc.connectionState)) _colgarLocal();
+    };
+    pcRef.current = pc;
+    otroRef.current = otroId;
+    return pc;
+  };
+
+  const _colgarLocal = () => {
+    pcRef.current?.close(); pcRef.current = null;
+    streamRef.current?.getTracks().forEach(t => t.stop()); streamRef.current = null;
+    offerBuf.current = null; iceBuf.current = [];
+    clearInterval(timerRef.current); timerRef.current = null;
+    setLlamadaActiva(false); setLlamadaEntrante(null);
+    setMuteo(false); setDuracion(0);
+  };
+
+  const _startTimer = () => {
+    timerRef.current = setInterval(() => setDuracion(d => d + 1), 1000);
+  };
+
+  const iniciarLlamada = async (otroId) => {
+    _send('call-ring', { from: miId, to: otroId, fromName: miNombre });
+    const pc = await _crearPC(otroId);
+    const offer = await pc.createOffer({ offerToReceiveAudio: true });
+    await pc.setLocalDescription(offer);
+    _send('call-offer', { from: miId, to: otroId, offer: pc.localDescription.toJSON() });
+    setLlamadaActiva(true);
+    _startTimer();
+  };
+
+  const responderLlamada = async () => {
+    const otroId = otroRef.current;
+    if (!otroId) return;
+    const pc = await _crearPC(otroId);
+    if (offerBuf.current) {
+      await pc.setRemoteDescription(offerBuf.current).catch(() => {});
+      for (const c of iceBuf.current) await pc.addIceCandidate(c).catch(() => {});
+      iceBuf.current = []; offerBuf.current = null;
+    }
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    _send('call-answer', { from: miId, to: otroId, answer: pc.localDescription.toJSON() });
+    setLlamadaEntrante(null);
+    setLlamadaActiva(true);
+    _startTimer();
+  };
+
+  const rechazarLlamada = () => {
+    if (otroRef.current) _send('call-end', { from: miId, to: otroRef.current });
+    setLlamadaEntrante(null);
+    otroRef.current = null;
+  };
+
+  const colgarLlamada = () => {
+    if (otroRef.current) _send('call-end', { from: miId, to: otroRef.current });
+    _colgarLocal();
+  };
+
+  const toggleMute = () => {
+    streamRef.current?.getAudioTracks().forEach(t => { t.enabled = !t.enabled; });
+    setMuteo(m => !m);
+  };
+
+  return { llamadaEntrante, llamadaActiva, muteo, duracion, iniciarLlamada, responderLlamada, rechazarLlamada, colgarLlamada, toggleMute };
 }
